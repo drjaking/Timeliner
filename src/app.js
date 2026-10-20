@@ -404,12 +404,33 @@
       };
 
       evtSource.onerror = function () {
-        if (state.serverConnected) {
-          state.serverConnected = false;
-          if (!state.dragOp) renderApp();
-        }
+        // Serverless SSE streams close and auto-reconnect; verified via polling below
       };
     }
+
+    // Background revision poll (6s) for multi-user sync on Vercel serverless functions
+    setInterval(async function () {
+      if (state.dragOp || document.hidden) return;
+      const latest = await apiRequest('GET', '/api/state');
+      if (!latest) {
+        if (state.serverConnected) {
+          state.serverConnected = false;
+          renderApp();
+        }
+        return;
+      }
+      const wasOffline = !state.serverConnected;
+      state.serverConnected = true;
+      if (
+        typeof latest.revision === 'number' &&
+        latest.revision > (state.serverRevision || 0)
+      ) {
+        applyServerState(latest);
+        renderApp();
+      } else if (wasOffline) {
+        renderApp();
+      }
+    }, 6000);
   }
 
 
