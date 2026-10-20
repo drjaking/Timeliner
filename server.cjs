@@ -215,6 +215,7 @@ function bumpRevision() {
   const savedAt = getIsoTimeStr();
   setSetting('revision', String(nextRev));
   setSetting('lastSavedAt', savedAt);
+  try { db.exec('PRAGMA wal_checkpoint(PASSIVE);'); } catch (_e) {}
   return { revision: nextRev, lastSavedAt: savedAt };
 }
 
