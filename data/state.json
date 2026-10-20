@@ -1,7 +1,7 @@
 {
   "programmeStartYear": 2026,
-  "revision": 7,
-  "lastSavedAt": "14:17:23",
+  "revision": 8,
+  "lastSavedAt": "17:39:14",
   "connectedClients": 0,
   "deadlines": [
     {
@@ -358,5 +358,6 @@
       "workloadCurve": "exponential",
       "notes": "Year 3 (+104w from 2024 Intake: Mon 29 Mar 2027 - Mon 20 Sep 2027) (Immovable)"
     }
-  ]
+  ],
+  "storageMode": "github-cloud"
 }
