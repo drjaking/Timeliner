@@ -1,0 +1,1420 @@
+/* ==========================================================================
+   Longitudinal Academic, Clinical & Research Sequencer
+   Strict Utilitarian Light Theme (#F8FAFC / #1E293B / #E2E8F0)
+   ========================================================================== */
+
+:root {
+  --bg-app: #F8FAFC;
+  --bg-panel: #FFFFFF;
+  --bg-subtle: #F1F5F9;
+  --text-primary: #1E293B;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  --border-grid: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-header: #94A3B8;
+
+  /* Domain Colors */
+  --domain-academic: #1E40AF;
+  --domain-academic-rgb: 30, 64, 175;
+  --domain-academic-bg: #EFF6FF;
+
+  --domain-clinical: #0F766E;
+  --domain-clinical-rgb: 15, 118, 110;
+  --domain-clinical-bg: #F0FDFA;
+
+  --domain-research: #991B1B;
+  --domain-research-rgb: 153, 27, 27;
+  --domain-research-bg: #FEF2F2;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ==========================================================================
+   App Layout Shell
+   ========================================================================== */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   Top Institutional Control Header
+   ========================================================================== */
+
+.top-header {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-strong);
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+.top-bar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  background: var(--text-primary);
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.brand-titles h1 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.brand-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mono-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+/* Toolbar Controls */
+
+.toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.control-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-grid);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.control-pill label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.control-pill input[type="number"] {
+  width: 58px;
+  border: 1px solid var(--border-strong);
+  background: #FFFFFF;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.control-pill input[type="range"] {
+  width: 78px;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+.segmented-group {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  overflow: hidden;
+  background: #FFFFFF;
+}
+
+.seg-btn {
+  border: none;
+  background: transparent;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-right: 1px solid var(--border-grid);
+}
+
+.seg-btn:last-child {
+  border-right: none;
+}
+
+.seg-btn.active {
+  background: var(--text-primary);
+  color: #FFFFFF;
+}
+
+/* Action Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: #FFFFFF;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--bg-subtle);
+}
+
+.btn-primary {
+  background: var(--text-primary);
+  color: #FFFFFF;
+  border-color: var(--text-primary);
+}
+
+.btn-primary:hover {
+  background: #0F172A;
+}
+
+.btn-active-drawer {
+  background: var(--bg-subtle);
+  border-color: var(--text-primary);
+}
+
+.btn-danger-outline {
+  color: #991B1B;
+  border-color: #FECACA;
+  background: #FEF2F2;
+}
+
+.btn-danger-outline:hover {
+  background: #FEE2E2;
+  border-color: #F87171;
+}
+
+/* ==========================================================================
+   Collapsible Add Deadline / Term Drawer
+   ========================================================================== */
+
+.crud-drawer {
+  background: var(--bg-app);
+  border-top: 1px solid var(--border-grid);
+  padding: 10px 16px;
+}
+
+.drawer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.25fr;
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .drawer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.drawer-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-grid);
+  border-radius: 3px;
+  padding: 10px 12px;
+}
+
+.drawer-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--bg-subtle);
+}
+
+.drawer-card-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.form-row-deadline {
+  display: grid;
+  grid-template-columns: 2fr 1.1fr 1.2fr 1.2fr 1.6fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.form-row-term {
+  display: grid;
+  grid-template-columns: 1.8fr 1.2fr 1.2fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field-group label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.field-input {
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: #FFFFFF;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--text-primary);
+}
+
+.prep-compound {
+  display: flex;
+}
+
+.prep-compound input {
+  width: 100%;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  font-family: var(--font-mono);
+}
+
+.prep-compound select {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--bg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 5px;
+}
+
+/* ==========================================================================
+   Main Workspace Body (Left/Center Scrollable 4-Col Grid + Right Macro Panel)
+   ========================================================================== */
+
+.workspace-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.timeline-viewport {
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-app);
+  position: relative;
+}
+
+.timeline-minwidth {
+  min-width: 980px;
+  width: 100%;
+}
+
+/* Sticky Column Headers */
+
+.sticky-column-headers {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 196px repeat(4, minmax(195px, 1fr));
+  background: #FFFFFF;
+  border-bottom: 2px solid var(--border-strong);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.axis-header-cell {
+  position: sticky;
+  left: 0;
+  z-index: 35;
+  background: var(--bg-subtle);
+  border-right: 2px solid var(--border-strong);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.axis-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.axis-header-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.domain-header-cell {
+  padding: 8px 12px;
+  border-right: 1px solid var(--border-grid);
+  background: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.domain-header-cell:last-child {
+  border-right: none;
+}
+
+.domain-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.domain-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.domain-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.domain-col-number {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.domain-col-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.domain-count-badge {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.domain-header-sub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   Timeline Body Grid
+   ========================================================================== */
+
+.timeline-body-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 196px repeat(4, minmax(195px, 1fr));
+}
+
+/* Sticky Left Time Axis + Load Heat-Strip */
+
+.axis-gutter {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: #F8FAFC;
+  border-right: 2px solid var(--border-strong);
+  user-select: none;
+}
+
+.axis-year-band {
+  position: absolute;
+  left: 0;
+  width: 34px;
+  border-right: 1px solid var(--border-grid);
+  border-bottom: 2px solid var(--border-header);
+  display: flex;
+   flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 12px;
+}
+
+.axis-year-band.even {
+  background: #F1F5F9;
+}
+
+.axis-year-band.odd {
+  background: #F8FAFC;
+}
+
+.axis-year-vertical-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.axis-year-sub-vertical {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.axis-month-cell {
+  position: absolute;
+  left: 34px;
+  width: 68px;
+  border-right: 1px solid var(--border-grid);
+  border-top: 1px solid var(--border-strong);
+  padding: 2px 5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.axis-month-cell.september {
+  border-top: 2px solid var(--text-primary);
+  background: rgba(226, 232, 240, 0.45);
+}
+
+.axis-month-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  display: block;
+}
+
+.axis-month-year {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.axis-week-row {
+  position: absolute;
+  left: 102px;
+  right: 0;
+  border-top: 1px solid rgba(226, 232, 240, 0.8);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.axis-week-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.heat-strip-cell {
+  width: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding-right: 2px;
+}
+
+.domain-pips {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.domain-pip {
+  width: 4.5px;
+  height: 7px;
+  border-radius: 1px;
+}
+
+.heat-tally-badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   Horizontal Background Grid Layer
+   ========================================================================== */
+
+.grid-backdrop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 196px;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.grid-week-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(226, 232, 240, 0.7);
+}
+
+.grid-month-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--border-grid);
+}
+
+.grid-year-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 2px solid var(--border-header);
+  background: rgba(241, 245, 249, 0.5);
+}
+
+.grid-year-watermark {
+  position: absolute;
+  right: 12px;
+  top: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(248, 250, 252, 0.9);
+  padding: 1px 6px;
+  border: 1px solid var(--border-grid);
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   Domain Columns (1-3) & Term Column (4)
+   ========================================================================== */
+
+.timeline-column {
+  position: relative;
+  border-right: 1px solid var(--border-grid);
+  z-index: 5;
+}
+
+.timeline-column.term-column {
+  background: rgba(248, 250, 252, 0.55);
+  border-right: none;
+}
+
+/* Empty Column Guidance */
+
+.empty-column-notice {
+  position: sticky;
+  top: 160px;
+  margin: 24px 14px;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  background: rgba(255, 255, 255, 0.86);
+  border-radius: 3px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Deadline Preparation Tail & Anchor Card
+   ========================================================================== */
+
+.deadline-composite {
+  position: absolute;
+  z-index: 10;
+  user-select: none;
+  transition: box-shadow 0.08s ease;
+}
+
+.deadline-composite:hover,
+.deadline-composite.is-Selected,
+.deadline-composite.is-dragging {
+  z-index: 25;
+}
+
+.prep-tail {
+  position: relative;
+  width: 100%;
+  border-left: 2px solid;
+  border-right: 1px solid;
+  border-top: 1px dashed;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+  cursor: grab;
+  overflow: visible;
+}
+
+.prep-tail:active {
+  cursor: grabbing;
+}
+
+/* Top Resize Handle for Prep Duration */
+
+.prep-resize-handle {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 5px;
+  z-index: 15;
+}
+
+.prep-resize-grip {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  opacity: 0.55;
+}
+
+.deadline-composite:hover .prep-resize-grip {
+  opacity: 1;
+}
+
+.prep-start-pill {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 0 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-grid);
+  color: var(--text-secondary);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Solid Deadline Anchor Bar & Label Card at Y_due */
+
+.deadline-anchor-bar {
+  width: 100%;
+  height: 4px;
+}
+
+.deadline-anchor-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid var(--border-strong);
+  border-left-width: 4px;
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+  padding: 4px 7px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  cursor: grab;
+}
+
+.deadline-anchor-card:active {
+  cursor: grabbing;
+}
+
+.anchor-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.anchor-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.anchor-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.anchor-edit-btn,
+.anchor-delete-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 4px;
+  font-size: 10.5px;
+  line-height: 1;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.anchor-edit-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+  border-color: var(--border-grid);
+}
+
+.anchor-delete-btn:hover {
+  color: #991B1B;
+  background: #FEE2E2;
+  border-color: #FCA5A5;
+}
+
+.anchor-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-secondary);
+}
+
+.anchor-prep-tag {
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.anchor-notes {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   Live Drag Tooltip Banner
+   ========================================================================== */
+
+.live-drag-hud {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: var(--text-primary);
+  color: #FFFFFF;
+  padding: 6px 14px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Immovable Clinical Placement Blocks (Column 2 Background)
+   ========================================================================== */
+
+.clinical-placement-block {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(15, 118, 110, 0.045),
+    rgba(15, 118, 110, 0.045) 7px,
+    rgba(15, 118, 110, 0.085) 7px,
+    rgba(15, 118, 110, 0.085) 14px
+  );
+  border: 1px solid rgba(15, 118, 110, 0.34);
+  border-left: 3.5px solid #0F766E;
+  border-radius: 2px;
+  padding: 5px 8px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.clinical-placement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  background: rgba(240, 253, 250, 0.92);
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+
+.clinical-placement-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #115E59;
+}
+
+.clinical-placement-lock {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #0F766E;
+  background: #CCFBF1;
+  padding: 0 4px;
+  border-radius: 2px;
+  letter-spacing: 0.03em;
+}
+
+.clinical-placement-dates {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: #134E4A;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 1px 5px;
+  border-radius: 2px;
+  align-self: flex-start;
+  margin-top: 3px;
+}
+
+.clinical-placement-footer {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: #0F766E;
+  background: rgba(240, 253, 250, 0.9);
+  padding: 1px 5px;
+  border-radius: 2px;
+  align-self: flex-end;
+}
+
+/* ==========================================================================
+   UCL Term Blocks (Column 4)
+   ========================================================================== */
+
+.term-block {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: 2px;
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.term-block.kind-term {
+  background: rgba(226, 232, 240, 0.65);
+  border-color: #94A3B8;
+  border-left-color: #1E293B;
+  color: #1E293B;
+}
+
+.term-block.kind-reading {
+  background: rgba(254, 243, 199, 0.65);
+  border-color: #FCD34D;
+  border-left-color: #B45309;
+  color: #78350F;
+}
+
+.term-block.kind-vacation {
+  background: rgba(241, 245, 249, 0.75);
+  border-color: #CBD5E1;
+  border-left-color: #94A3B8;
+  color: #475569;
+  border-style: dashed;
+  border-left-style: solid;
+}
+
+.term-block-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.term-block-name {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.term-block-dates {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  opacity: 0.9;
+}
+
+.term-block-duration {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  opacity: 0.75;
+  align-self: flex-end;
+}
+
+/* ==========================================================================
+   Right-Hand 3-Year Compressed Macro Workload Heatmap Panel
+   ========================================================================== */
+
+.macro-heatmap-panel {
+  width: 184px;
+  flex: 0 0 184px;
+  height: 100%;
+  background: var(--bg-panel);
+  border-left: 2px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  z-index: 25;
+  overflow: hidden;
+}
+
+.macro-panel-header {
+  padding: 8px 10px;
+  background: var(--bg-subtle);
+  border-bottom: 2px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.macro-panel-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.macro-panel-sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.macro-heatmap-canvas {
+  position: relative;
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+  background: #F8FAFC;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.macro-week-slice {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.35);
+}
+
+.macro-week-slice:hover {
+  outline: 1px solid var(--text-primary);
+  z-index: 12;
+}
+
+.macro-year-gutter {
+  width: 24px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-grid);
+}
+
+.macro-domain-tracks {
+  width: 27px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-right: 1px solid var(--border-grid);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.macro-domain-cell {
+  height: 100%;
+}
+
+.macro-intensity-track {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  overflow: hidden;
+}
+
+.macro-intensity-bar {
+  height: 75%;
+  min-height: 2px;
+  border-radius: 1px;
+}
+
+.macro-year-divider {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px solid var(--text-primary);
+  pointer-events: none;
+  z-index: 8;
+}
+
+.macro-year-tag {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0 2px;
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.macro-month-tick {
+  position: absolute;
+  left: 24px;
+  right: 0;
+  border-top: 1px dotted rgba(148, 163, 184, 0.45);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.macro-month-label {
+  position: absolute;
+  right: 4px;
+  top: 0px;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Interactive Viewport Lens Indicator inside Macro Panel */
+
+.macro-viewport-lens {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border: 1.5px solid #1E293B;
+  background: rgba(30, 41, 59, 0.08);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+  z-index: 15;
+}
+
+.macro-panel-legend {
+  padding: 6px 8px;
+  background: #FFFFFF;
+  border-top: 1px solid var(--border-grid);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.macro-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.macro-legend-swatches {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.macro-swatch {
+  width: 10px;
+  height: 8px;
+  border-radius: 1px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+}
+
+/* ==========================================================================
+   Modals (Bulk Import/Export & Item Edit)
+   ========================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  width: 100%;
+  max-width: 780px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+.modal-card.modal-sm {
+  max-width: 460px;
+}
+
+.modal-header {
+  padding: 12px 16px;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border-grid);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-footer {
+  padding: 10px 16px;
+  background: var(--bg-app);
+  border-top: 1px solid var(--border-grid);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-textarea {
+  width: 100%;
+  height: 220px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.schema-spec-box {
+  background: var(--bg-app);
+  border: 1px solid var(--border-grid);
+  border-radius: 3px;
+  padding: 10px 12px;
+  font-size: 11px;
+}
+
+.schema-spec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.schema-pre {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-grid);
+  padding: 6px 8px;
+  border-radius: 2px;
+  overflow-x: auto;
+  color: var(--text-secondary);
+}
+
+.alert-box {
+  padding: 8px 12px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+
+.alert-error {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+}
+
+.alert-success {
+  background: #F0FDFA;
+  border: 1px solid #99F6E4;
+  color: #0F766E;
+}
+
+/* ==========================================================================
+   Bottom Status Bar
+   ========================================================================== */
+
+.bottom-footer {
+  background: #FFFFFF;
+  border-top: 1px solid var(--border-strong);
+  padding: 5px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  z-index: 35;
+}
+
+.footer-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-mono);
+}
+
+.legend-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-box {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+}
