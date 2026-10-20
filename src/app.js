@@ -221,13 +221,19 @@
     );
   }
 
+  let pendingWriteCount = 0;
+
   async function apiRequest(method, endpoint, bodyObj) {
     if (!isUsingHttpProtocol()) return null;
+    const isWrite = method !== 'GET' && method !== 'HEAD';
+    if (isWrite) pendingWriteCount++;
     try {
       const opts = {
         method: method,
+        cache: 'no-store',
         headers: {
           'X-Client-Id': CLIENT_ID,
+          'Cache-Control': 'no-cache',
         },
       };
       if (bodyObj !== undefined) {
@@ -238,16 +244,23 @@
       if (!res.ok) return null;
       const data = await res.json();
       state.serverConnected = true;
-      if (data && typeof data.lastSavedAt === 'string') {
-        state.lastSavedAt = data.lastSavedAt;
+      if (data && typeof data.storageMode === 'string') {
+        state.storageMode = data.storageMode;
       }
-      if (data && typeof data.revision === 'number') {
-        state.serverRevision = data.revision;
+      if (isWrite) {
+        if (data && typeof data.lastSavedAt === 'string') {
+          state.lastSavedAt = data.lastSavedAt;
+        }
+        if (data && typeof data.revision === 'number') {
+          state.serverRevision = data.revision;
+        }
       }
       return data;
     } catch (_err) {
       state.serverConnected = false;
       return null;
+    } finally {
+      if (isWrite) pendingWriteCount = Math.max(0, pendingWriteCount - 1);
     }
   }
 
@@ -408,12 +421,13 @@
       };
     }
 
-    // Background revision poll (6s) for multi-user sync on Vercel serverless functions
+    // Background revision poll (3s) for multi-user sync across instances
     setInterval(async function () {
-      if (state.dragOp || document.hidden) return;
-      const latest = await apiRequest('GET', '/api/state');
-      if (!latest) {
-        if (state.serverConnected) {
+      if (state.dragOp || document.hidden || pendingWriteCount > 0) return;
+      const prevRev = state.serverRevision || 0;
+      const latest = await apiRequest('GET', '/api/state?_t=' + Date.now());
+      if (!latest || state.dragOp || pendingWriteCount > 0) {
+        if (!latest && state.serverConnected) {
           state.serverConnected = false;
           renderApp();
         }
@@ -423,14 +437,14 @@
       state.serverConnected = true;
       if (
         typeof latest.revision === 'number' &&
-        latest.revision > (state.serverRevision || 0)
+        latest.revision !== prevRev
       ) {
         applyServerState(latest);
         renderApp();
       } else if (wasOffline) {
         renderApp();
       }
-    }, 6000);
+    }, 3000);
   }
 
 

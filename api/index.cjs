@@ -14,12 +14,12 @@
  *   - GET    /api/events
  *
  * Cloud Persistence Strategy (100% Free):
- *   1. Loads initial state from bundled `data/state.json` (or `src/seedData.js`).
- *   2. Caches active state in `/tmp/timeliner-state.json` across warm invocations.
- *   3. When `GITHUB_TOKEN` is configured in Vercel Environment Variables
- *      (optional `GITHUB_REPO`, defaults to `drjaking/Timeliner`), automatically
- *      reads and commits `data/state.json` via the GitHub Contents API so all
- *      colleagues share permanent cloud persistence across cold starts.
+ *   1. Reads and writes `data/state.json` on the dedicated `timeliner-state` branch
+ *      in `drjaking/Timeliner` via the GitHub API when `GITHUB_TOKEN` is set in
+ *      Vercel Environment Variables. Writing to `timeliner-state` avoids triggering
+ *      Vercel production rebuilds on `main`.
+ *   2. Caches active state in `/tmp/timeliner-vercel-state.json` and automatically
+ *      retries on HTTP 409 SHA conflicts across concurrent serverless instances.
  */
 
 const fs = require('node:fs');
@@ -30,17 +30,20 @@ const SeedData = require('../src/seedData.js');
 const BUNDLED_STATE_PATH = path.join(__dirname, '..', 'data', 'state.json');
 const TMP_STATE_PATH = path.join(os.tmpdir(), 'timeliner-vercel-state.json');
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const GITHUB_REPO = process.env.GITHUB_REPO || 'drjaking/Timeliner';
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
+const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_REPO = (process.env.GITHUB_REPO || 'drjaking/Timeliner').trim();
+const GITHUB_BRANCH = (process.env.GITHUB_BRANCH || 'timeliner-state').trim();
 const GITHUB_FILE_PATH = 'data/state.json';
 
 let memoryState = null;
-let lastGithubSyncMs = 0;
 let githubFileSha = null;
 
 function getIsoTimeStr() {
   return new Date().toTimeString().slice(0, 8);
+}
+
+function getStorageMode() {
+  return GITHUB_TOKEN ? 'github-cloud' : 'vercel-ephemeral';
 }
 
 function buildDefaultSeedState() {
@@ -48,6 +51,7 @@ function buildDefaultSeedState() {
     programmeStartYear: 2026,
     revision: 1,
     lastSavedAt: getIsoTimeStr(),
+    storageMode: getStorageMode(),
     deadlines: (SeedData.INITIAL_DEADLINES || []).map(function (d) {
       return {
         id: d.id,
@@ -79,13 +83,17 @@ function buildDefaultSeedState() {
 function loadLocalBundledOrTmpState() {
   try {
     if (fs.existsSync(TMP_STATE_PATH)) {
-      return JSON.parse(fs.readFileSync(TMP_STATE_PATH, 'utf8'));
+      const parsed = JSON.parse(fs.readFileSync(TMP_STATE_PATH, 'utf8'));
+      parsed.storageMode = getStorageMode();
+      return parsed;
     }
   } catch (_e) {}
 
   try {
     if (fs.existsSync(BUNDLED_STATE_PATH)) {
-      return JSON.parse(fs.readFileSync(BUNDLED_STATE_PATH, 'utf8'));
+      const parsed = JSON.parse(fs.readFileSync(BUNDLED_STATE_PATH, 'utf8'));
+      parsed.storageMode = getStorageMode();
+      return parsed;
     }
   } catch (_e) {}
 
@@ -93,25 +101,24 @@ function loadLocalBundledOrTmpState() {
 }
 
 function saveTmpState(stateObj) {
+  stateObj.storageMode = getStorageMode();
   memoryState = stateObj;
   try {
     fs.writeFileSync(TMP_STATE_PATH, JSON.stringify(stateObj, null, 2), 'utf8');
   } catch (_e) {}
 }
 
-async function fetchStateFromGitHub(force) {
+async function fetchStateFromGitHub() {
   if (!GITHUB_TOKEN) return null;
-  const now = Date.now();
-  if (!force && memoryState && now - lastGithubSyncMs < 4000) {
-    return memoryState;
-  }
 
   try {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(GITHUB_BRANCH)}&_t=${Date.now()}`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${GITHUB_TOKEN}`,
         Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache, no-store, max-age=0',
+        'If-None-Match': `"${Date.now()}-${Math.random()}"`,
         'User-Agent': 'Timeliner-Vercel-Serverless',
       },
     });
@@ -121,14 +128,9 @@ async function fetchStateFromGitHub(force) {
       githubFileSha = payload.sha || githubFileSha;
       const decoded = Buffer.from(payload.content, 'base64').toString('utf8');
       const parsed = JSON.parse(decoded);
-      lastGithubSyncMs = now;
-      if (
-        !memoryState ||
-        Number(parsed.revision || 0) >= Number(memoryState.revision || 0)
-      ) {
-        saveTmpState(parsed);
-      }
-      return memoryState;
+      parsed.storageMode = getStorageMode();
+      saveTmpState(parsed);
+      return parsed;
     }
   } catch (_e) {}
   return null;
@@ -138,65 +140,80 @@ async function persistStateToGitHub(stateObj, commitLabel) {
   saveTmpState(stateObj);
   if (!GITHUB_TOKEN) return;
 
-  try {
-    const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`;
-    const headers = {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'Timeliner-Vercel-Serverless',
-    };
+  const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`;
+  const headers = {
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache, no-store',
+    'User-Agent': 'Timeliner-Vercel-Serverless',
+  };
 
-    if (!githubFileSha) {
-      const getRes = await fetch(
-        `${apiUrl}?ref=${encodeURIComponent(GITHUB_BRANCH)}`,
-        { headers }
-      );
-      if (getRes.ok) {
-        const existing = await getRes.json();
-        githubFileSha = existing.sha;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (!githubFileSha || attempt > 0) {
+        const getRes = await fetch(
+          `${apiUrl}?ref=${encodeURIComponent(GITHUB_BRANCH)}&_t=${Date.now()}`,
+          {
+            headers: {
+              ...headers,
+              'If-None-Match': `"${Date.now()}-${Math.random()}"`,
+            },
+          }
+        );
+        if (getRes.ok) {
+          const existing = await getRes.json();
+          githubFileSha = existing.sha;
+        }
       }
-    }
 
-    const contentBase64 = Buffer.from(
-      JSON.stringify(stateObj, null, 2),
-      'utf8'
-    ).toString('base64');
+      const contentBase64 = Buffer.from(
+        JSON.stringify(stateObj, null, 2),
+        'utf8'
+      ).toString('base64');
 
-    const putBody = {
-      message: `Update schedule state (${commitLabel || 'rev ' + stateObj.revision})`,
-      content: contentBase64,
-      branch: GITHUB_BRANCH,
-    };
-    if (githubFileSha) {
-      putBody.sha = githubFileSha;
-    }
-
-    const putRes = await fetch(apiUrl, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(putBody),
-    });
-
-    if (putRes.ok) {
-      const result = await putRes.json();
-      if (result && result.content && result.content.sha) {
-        githubFileSha = result.content.sha;
+      const putBody = {
+        message: `[skip ci] Update schedule state (${commitLabel || 'rev ' + stateObj.revision})`,
+        content: contentBase64,
+        branch: GITHUB_BRANCH,
+      };
+      if (githubFileSha) {
+        putBody.sha = githubFileSha;
       }
-      lastGithubSyncMs = Date.now();
-    } else if (putRes.status === 409) {
-      // SHA conflict: refresh SHA once and retry
+
+      const putRes = await fetch(apiUrl, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(putBody),
+      });
+
+      if (putRes.ok) {
+        const result = await putRes.json();
+        if (result && result.content && result.content.sha) {
+          githubFileSha = result.content.sha;
+        }
+        return;
+      }
+
+      if (putRes.status === 409 || putRes.status === 422) {
+        githubFileSha = null;
+        continue;
+      }
+      return;
+    } catch (_e) {
       githubFileSha = null;
     }
-  } catch (_e) {}
+  }
 }
 
-async function getCurrentState(forceRemote) {
+async function getCurrentState() {
+  const ghState = await fetchStateFromGitHub();
+  if (ghState) return ghState;
   if (!memoryState) {
     memoryState = loadLocalBundledOrTmpState();
   }
-  const ghState = await fetchStateFromGitHub(Boolean(forceRemote));
-  return ghState || memoryState;
+  memoryState.storageMode = getStorageMode();
+  return memoryState;
 }
 
 function bumpStateMetadata(stateObj) {
@@ -204,7 +221,8 @@ function bumpStateMetadata(stateObj) {
   const savedAt = getIsoTimeStr();
   stateObj.revision = nextRev;
   stateObj.lastSavedAt = savedAt;
-  return { revision: nextRev, lastSavedAt: savedAt };
+  stateObj.storageMode = getStorageMode();
+  return { revision: nextRev, lastSavedAt: savedAt, storageMode: stateObj.storageMode };
 }
 
 function readJsonBody(req) {
@@ -241,7 +259,7 @@ function readJsonBody(req) {
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Client-Id',
@@ -263,9 +281,9 @@ module.exports = async function handler(req, res) {
   const parsedUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
 
-  // 1. SSE Endpoint (/api/events) — returns quick single-shot event with 6s retry for serverless
+  // 1. SSE Endpoint (/api/events)
   if (req.method === 'GET' && pathname === '/api/events') {
-    const stateObj = await getCurrentState(false);
+    const stateObj = await getCurrentState();
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
@@ -273,11 +291,12 @@ module.exports = async function handler(req, res) {
       'Access-Control-Allow-Origin': '*',
     });
     res.write(
-      `retry: 6000\ndata: ${JSON.stringify({
+      `retry: 3000\ndata: ${JSON.stringify({
         type: 'connected',
         connectedClients: 1,
         revision: stateObj.revision,
         lastSavedAt: stateObj.lastSavedAt,
+        storageMode: stateObj.storageMode,
       })}\n\n`
     );
     res.end();
@@ -286,15 +305,15 @@ module.exports = async function handler(req, res) {
 
   // 2. GET /api/state
   if (req.method === 'GET' && pathname === '/api/state') {
-    const stateObj = await getCurrentState(false);
+    const stateObj = await getCurrentState();
     sendJson(res, 200, stateObj);
     return;
   }
 
-  // 3. PUT /api/state (Full state replacement / bulk import)
+  // 3. PUT /api/state
   if (req.method === 'PUT' && pathname === '/api/state') {
     const body = await readJsonBody(req);
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
 
     if (typeof body.programmeStartYear === 'number') {
       stateObj.programmeStartYear = Math.round(body.programmeStartYear);
@@ -344,14 +363,14 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // 4. POST /api/deadlines (Upsert single deadline)
+  // 4. POST /api/deadlines
   if (req.method === 'POST' && pathname === '/api/deadlines') {
     const d = await readJsonBody(req);
     if (!d || !d.id) {
       sendJson(res, 400, { error: 'Invalid deadline payload' });
       return;
     }
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     const record = {
       id: String(d.id),
       title: String(d.title || 'Untitled'),
@@ -379,7 +398,7 @@ module.exports = async function handler(req, res) {
   // 5. DELETE /api/deadlines/:id
   if (req.method === 'DELETE' && pathname.startsWith('/api/deadlines/')) {
     const id = decodeURIComponent(pathname.slice('/api/deadlines/'.length));
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     stateObj.deadlines = stateObj.deadlines.filter(function (d) {
       return d.id !== id;
     });
@@ -396,7 +415,7 @@ module.exports = async function handler(req, res) {
       sendJson(res, 400, { error: 'Invalid term payload' });
       return;
     }
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     const record = {
       id: String(t.id),
       name: String(t.name || 'Term'),
@@ -420,7 +439,7 @@ module.exports = async function handler(req, res) {
   // 7. DELETE /api/terms/:id
   if (req.method === 'DELETE' && pathname.startsWith('/api/terms/')) {
     const id = decodeURIComponent(pathname.slice('/api/terms/'.length));
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     stateObj.terms = stateObj.terms.filter(function (t) {
       return t.id !== id;
     });
@@ -437,7 +456,7 @@ module.exports = async function handler(req, res) {
       sendJson(res, 400, { error: 'Invalid placement payload' });
       return;
     }
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     const record = {
       id: String(p.id),
       name: String(p.name || 'Placement'),
@@ -465,7 +484,7 @@ module.exports = async function handler(req, res) {
   // 9. PUT /api/settings
   if (req.method === 'PUT' && pathname === '/api/settings') {
     const body = await readJsonBody(req);
-    const stateObj = await getCurrentState(true);
+    const stateObj = await getCurrentState();
     if (typeof body.programmeStartYear === 'number') {
       stateObj.programmeStartYear = Math.round(body.programmeStartYear);
     }
