@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+; ============================================================================
+; Timeliner LAN Web Server - Windows Defender Firewall Inbound Rules
+; Double-click this file (or run: reg import timeliner-firewall-rules.reg)
+; as Administrator to allow LAN connections on TCP port 3000 and suppress
+; unattended Windows Firewall prompts for Node.js.
+; ============================================================================
+
+[HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules]
+"Timeliner-LAN-Port-3000-TCP"="v2.31|Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=3000|RA4=LocalSubnet|RA6=LocalSubnet|Name=Timeliner LAN Server (TCP 3000)|Desc=Allow inbound LAN traffic to Timeliner web server on TCP port 3000|"
+"Timeliner-LAN-NodeJS-App"="v2.31|Action=Allow|Active=TRUE|Dir=In|Protocol=6|RA4=LocalSubnet|RA6=LocalSubnet|App=C:\\Program Files\\nodejs\\node.exe|Name=Timeliner LAN Server (Node.js Runtime)|Desc=Allow Node.js runtime on LocalSubnet to prevent unattended Windows Firewall prompts|"

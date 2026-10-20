@@ -8,13 +8,21 @@ The application visualizes and sequences deadlines across three distinct program
 
 ## Quick Start
 
-### Option A: Zero-Dependency Direct Browser Execution (Active Runtime)
-No build step or Node.js installation is required. Open `index.html` directly in any modern browser:
-- **`index.html`** — Entry point loading `styles.css`, `src/dateMath.js`, `src/schemaParser.js`, and `src/app.js`.
+### Option A: Shared LAN Web Server + SQLite Database (Recommended for Multi-User LAN)
+Runs with **zero external npm dependencies** (~25 MB RAM, 0% idle CPU) using Node.js's built-in `node:http` and `node:sqlite` (WAL mode) plus real-time Server-Sent Events (SSE) synchronization across all connected LAN browsers:
+
+1. Double-click **`start-server.bat`** (or run `npm start` / `node --no-warnings --experimental-sqlite server.cjs`).
+2. The console prints both the local URL (`http://localhost:3000`) and your desktop's **LAN URL** (e.g., `http://192.168.1.132:3000`).
+3. Share the LAN URL with colleagues on the local network. Every drag-and-drop reschedule, preparation window resize, addition, deletion, or bulk import is immediately committed to `data/timeliner.db` and broadcast live to all open browsers.
+
+### Option B: Standalone Direct Browser Execution (Offline Fallback)
+If opened directly from disk (`file:///.../index.html`) without the server running, the application automatically falls back to `localStorage` caching:
+- **`server.cjs`** — Lightweight zero-dependency Node.js HTTP + SSE + SQLite (`data/timeliner.db`) server.
+- **`index.html`** — Entry point loading `styles.css`, `src/dateMath.js`, `src/schemaParser.js`, `src/seedData.js`, and `src/app.js`.
 - **`styles.css`** — Complete utilitarian light-theme stylesheet (`#F8FAFC` canvas, `#1E293B` typography, `#E2E8F0` gridlines).
+- **`src/seedData.js`** — Shared UCL 3-year seeded dataset (33 deadlines, 24 UCL term blocks, 6 immovable clinical placements) used by both the SQLite database initializer and browser fallback.
 - **`src/dateMath.js`** — UTC midnight date-to-Y-coordinate math, month/year boundary generators, weekly concurrent preparation load calculator, and intra-column overlapping lane layout engine.
 - **`src/schemaParser.js`** — JSON and CSV bulk import parser, validator, and exporter.
-- **`src/app.js`** — Full interactive application controller, seeded UCL dataset, pointer-event vertical drag-and-drop rescheduling, preparation window top-edge resizing, modal CRUD, `localStorage` persistence, and right-hand 3-year macro heatmap scrubber.
+- **`src/app.js`** — Full interactive application controller, real-time SSE + REST SQLite synchronization, pointer-event vertical drag-and-drop rescheduling, preparation window top-edge resizing, modal CRUD, and right-hand 3-year macro heatmap scrubber.
 
-### Option B: Vite + React + TypeScript Scaffold
-If developing on a machine with Node.js / `npm` installed, a parallel React + TypeScript scaffold is also included (`package.json`, `vite.config.ts`, `src/*.tsx`), though **`index.html` + `src/app.js` is the primary up-to-date runtime**. See [`HANDOVER.md`](./HANDOVER.md) for full architectural and dataset details.
+See [`HANDOVER.md`](./HANDOVER.md) for full architectural and dataset details.

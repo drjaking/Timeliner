@@ -22,6 +22,12 @@
     return null;
   }
 
+  function normalizeWorkloadCurve(raw) {
+    const cleaned = String(raw || '').trim().toLowerCase();
+    if (cleaned === 'linear' || cleaned === 'lin') return 'linear';
+    return 'exponential';
+  }
+
   function splitCsvLine(line) {
     const cells = [];
     let current = '';
@@ -68,10 +74,17 @@
     const warnings = [];
     const deadlines = [];
     const terms = [];
+    const clinicalPlacements = [];
 
     if (!trimmed) {
       errors.push('Input is empty. Paste JSON or CSV content or upload a file.');
-      return { deadlines: deadlines, terms: terms, errors: errors, warnings: warnings };
+      return {
+        deadlines: deadlines,
+        terms: terms,
+        clinicalPlacements: clinicalPlacements,
+        errors: errors,
+        warnings: warnings,
+      };
     }
 
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -79,6 +92,7 @@
         const parsed = JSON.parse(trimmed);
         let rawDeadlines = [];
         let rawTerms = [];
+        let rawPlacements = [];
         let explicitStartYear = undefined;
 
         if (Array.isArray(parsed)) {
@@ -87,6 +101,12 @@
             if (item && typeof item === 'object') {
               if ('dueDate' in item || 'domain' in item) {
                 rawDeadlines.push(item);
+              } else if (
+                ('startLoadDays' in item || 'endLoadDays' in item) &&
+                'startDate' in item &&
+                'endDate' in item
+              ) {
+                rawPlacements.push(item);
               } else if ('startDate' in item && 'endDate' in item) {
                 rawTerms.push(item);
               } else {
@@ -102,9 +122,15 @@
           }
           if (Array.isArray(parsed.deadlines)) rawDeadlines = parsed.deadlines;
           if (Array.isArray(parsed.terms)) rawTerms = parsed.terms;
-          if (!Array.isArray(parsed.deadlines) && !Array.isArray(parsed.terms)) {
+          if (Array.isArray(parsed.clinicalPlacements))
+            rawPlacements = parsed.clinicalPlacements;
+          if (
+            !Array.isArray(parsed.deadlines) &&
+            !Array.isArray(parsed.terms) &&
+            !Array.isArray(parsed.clinicalPlacements)
+          ) {
             errors.push(
-              'JSON root object must include a "deadlines" array and/or a "terms" array.'
+              'JSON root object must include "deadlines", "terms", and/or "clinicalPlacements" arrays.'
             );
           }
         }
@@ -119,6 +145,12 @@
           const dueDate = String(rec.dueDate ?? '').trim();
           const prepDurationDays = Number(
             rec.prepDurationDays ?? rec.prepDays ?? rec.preparationDays ?? 14
+          );
+          const postDurationDays = Number(
+            rec.postDurationDays ?? rec.postDays ?? rec.followUpDays ?? 0
+          );
+          const workloadCurve = normalizeWorkloadCurve(
+            rec.workloadCurve ?? rec.curve ?? rec.gradientCurve
           );
           const notes = rec.notes ? String(rec.notes).trim() : undefined;
 
@@ -146,9 +178,15 @@
             );
             return;
           }
-          if (!Number.isFinite(prepDurationDays) || prepDurationDays < 1) {
+          if (!Number.isFinite(prepDurationDays) || prepDurationDays < 0) {
             errors.push(
-              'Deadline "' + title + '": prepDurationDays must be >= 1.'
+              'Deadline "' + title + '": prepDurationDays must be >= 0.'
+            );
+            return;
+          }
+          if (!Number.isFinite(postDurationDays) || postDurationDays < 0) {
+            errors.push(
+              'Deadline "' + title + '": postDurationDays must be >= 0.'
             );
             return;
           }
@@ -162,6 +200,8 @@
             domain: domain,
             dueDate: dueDate,
             prepDurationDays: Math.round(prepDurationDays),
+            postDurationDays: Math.round(postDurationDays),
+            workloadCurve: workloadCurve,
             notes: notes,
           });
         });
@@ -207,6 +247,57 @@
           });
         });
 
+        rawPlacements.forEach(function (rec, idx) {
+          if (!rec || typeof rec !== 'object') {
+            errors.push('Placement [' + idx + ']: Invalid object.');
+            return;
+          }
+          const name = String(rec.name ?? rec.title ?? '').trim();
+          const startDate = String(rec.startDate ?? '').trim();
+          const endDate = String(rec.endDate ?? '').trim();
+          const startLoadDays = Number(
+            rec.startLoadDays ?? rec.postDurationDays ?? 14
+          );
+          const endLoadDays = Number(
+            rec.endLoadDays ?? rec.prepDurationDays ?? 14
+          );
+          const workloadCurve = normalizeWorkloadCurve(
+            rec.workloadCurve ?? rec.curve ?? rec.gradientCurve
+          );
+          const notes = rec.notes ? String(rec.notes).trim() : undefined;
+
+          if (!name) {
+            errors.push('Placement [' + idx + ']: Missing "name".');
+            return;
+          }
+          const startMs = DateMath.parseIsoToUtcMs(startDate);
+          const endMs = DateMath.parseIsoToUtcMs(endDate);
+          if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
+            errors.push('Placement "' + name + '": Invalid startDate or endDate.');
+            return;
+          }
+
+          clinicalPlacements.push({
+            id:
+              typeof rec.id === 'string' && rec.id.trim()
+                ? rec.id.trim()
+                : generateId('clin-pl'),
+            name: name,
+            startDate: startDate,
+            endDate: endDate,
+            startLoadDays:
+              Number.isFinite(startLoadDays) && startLoadDays >= 0
+                ? Math.round(startLoadDays)
+                : 14,
+            endLoadDays:
+              Number.isFinite(endLoadDays) && endLoadDays >= 0
+                ? Math.round(endLoadDays)
+                : 14,
+            workloadCurve: workloadCurve,
+            notes: notes,
+          });
+        });
+
         const allDates = deadlines
           .map(function (d) {
             return d.dueDate;
@@ -214,6 +305,9 @@
           .concat(
             terms.map(function (t) {
               return t.startDate;
+            }),
+            clinicalPlacements.map(function (p) {
+              return p.startDate;
             })
           );
         const detectedStartYear =
@@ -224,13 +318,20 @@
         return {
           deadlines: deadlines,
           terms: terms,
+          clinicalPlacements: clinicalPlacements,
           detectedStartYear: detectedStartYear,
           errors: errors,
           warnings: warnings,
         };
       } catch (err) {
         errors.push('JSON Syntax Error: ' + (err && err.message ? err.message : String(err)));
-        return { deadlines: deadlines, terms: terms, errors: errors, warnings: warnings };
+        return {
+          deadlines: deadlines,
+          terms: terms,
+          clinicalPlacements: clinicalPlacements,
+          errors: errors,
+          warnings: warnings,
+        };
       }
     }
 
@@ -246,7 +347,13 @@
 
     if (lines.length < 2) {
       errors.push('CSV input must include a header row and at least one data row.');
-      return { deadlines: deadlines, terms: terms, errors: errors, warnings: warnings };
+      return {
+        deadlines: deadlines,
+        terms: terms,
+        clinicalPlacements: clinicalPlacements,
+        errors: errors,
+        warnings: warnings,
+      };
     }
 
     const headers = splitCsvLine(lines[0]).map(function (h) {
@@ -276,6 +383,17 @@
         h === 'prep'
       );
     });
+    const idxPostDays = headers.findIndex(function (h) {
+      return (
+        h === 'postdurationdays' ||
+        h === 'postdays' ||
+        h === 'followupdays' ||
+        h === 'post'
+      );
+    });
+    const idxCurve = headers.findIndex(function (h) {
+      return h === 'workloadcurve' || h === 'curve' || h === 'gradientcurve';
+    });
     const idxNotes = headers.findIndex(function (h) {
       return h === 'notes' || h === 'note' || h === 'description';
     });
@@ -296,14 +414,68 @@
         Boolean(cells[idxStartDate]) &&
         Boolean(cells[idxEndDate]);
 
-      const isTermRow =
-        rawType === 'term' ||
-        rawType === 'ucl_term' ||
-        (rawType !== 'deadline' &&
-          hasStartEnd &&
-          (idxDueDate < 0 || !cells[idxDueDate]));
+      const isPlacementRow =
+        rawType === 'placement' || rawType === 'clinical_placement';
 
-      if (isTermRow) {
+      const isTermRow =
+        !isPlacementRow &&
+        (rawType === 'term' ||
+          rawType === 'ucl_term' ||
+          (rawType !== 'deadline' &&
+            hasStartEnd &&
+            (idxDueDate < 0 || !cells[idxDueDate])));
+
+      if (isPlacementRow) {
+        const name = idxTitle >= 0 ? cells[idxTitle] || '' : '';
+        const startDate = idxStartDate >= 0 ? cells[idxStartDate] || '' : '';
+        const endDate = idxEndDate >= 0 ? cells[idxEndDate] || '' : '';
+        const rawEndLoad =
+          idxPrepDays >= 0 && cells[idxPrepDays] !== ''
+            ? cells[idxPrepDays]
+            : '14';
+        const rawStartLoad =
+          idxPostDays >= 0 && cells[idxPostDays] !== ''
+            ? cells[idxPostDays]
+            : '14';
+        const workloadCurve = normalizeWorkloadCurve(
+          idxCurve >= 0 ? cells[idxCurve] : 'exponential'
+        );
+        const notes =
+          idxNotes >= 0 && cells[idxNotes] ? cells[idxNotes] : undefined;
+
+        if (!name) {
+          errors.push(rowLabel + ': Missing placement name.');
+          continue;
+        }
+        const startMs = DateMath.parseIsoToUtcMs(startDate);
+        const endMs = DateMath.parseIsoToUtcMs(endDate);
+        if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
+          errors.push(
+            rowLabel + ' ("' + name + '"): Invalid startDate or endDate.'
+          );
+          continue;
+        }
+        const startLoadDays = Number(rawStartLoad);
+        const endLoadDays = Number(rawEndLoad);
+
+        clinicalPlacements.push({
+          id:
+            idxId >= 0 && cells[idxId] ? cells[idxId] : generateId('clin-pl'),
+          name: name,
+          startDate: startDate,
+          endDate: endDate,
+          startLoadDays:
+            Number.isFinite(startLoadDays) && startLoadDays >= 0
+              ? Math.round(startLoadDays)
+              : 14,
+          endLoadDays:
+            Number.isFinite(endLoadDays) && endLoadDays >= 0
+              ? Math.round(endLoadDays)
+              : 14,
+          workloadCurve: workloadCurve,
+          notes: notes,
+        });
+      } else if (isTermRow) {
         const name = idxTitle >= 0 ? cells[idxTitle] || '' : '';
         const startDate = idxStartDate >= 0 ? cells[idxStartDate] || '' : '';
         const endDate = idxEndDate >= 0 ? cells[idxEndDate] || '' : '';
@@ -338,7 +510,11 @@
         const title = idxTitle >= 0 ? cells[idxTitle] || '' : '';
         const rawDomain = idxDomain >= 0 ? cells[idxDomain] || '' : '';
         const dueDate = idxDueDate >= 0 ? cells[idxDueDate] || '' : '';
-        const rawPrep = idxPrepDays >= 0 ? cells[idxPrepDays] || '14' : '14';
+        const rawPrep = idxPrepDays >= 0 && cells[idxPrepDays] !== '' ? cells[idxPrepDays] : '14';
+        const rawPost = idxPostDays >= 0 && cells[idxPostDays] !== '' ? cells[idxPostDays] : '0';
+        const workloadCurve = normalizeWorkloadCurve(
+          idxCurve >= 0 ? cells[idxCurve] : 'exponential'
+        );
         const notes = idxNotes >= 0 && cells[idxNotes] ? cells[idxNotes] : undefined;
 
         if (!title) {
@@ -369,13 +545,25 @@
           continue;
         }
         const prepDurationDays = Number(rawPrep);
-        if (!Number.isFinite(prepDurationDays) || prepDurationDays < 1) {
+        if (!Number.isFinite(prepDurationDays) || prepDurationDays < 0) {
           errors.push(
             rowLabel +
               ' ("' +
               title +
               '"): Invalid prepDurationDays "' +
               rawPrep +
+              '".'
+          );
+          continue;
+        }
+        const postDurationDays = Number(rawPost);
+        if (!Number.isFinite(postDurationDays) || postDurationDays < 0) {
+          errors.push(
+            rowLabel +
+              ' ("' +
+              title +
+              '"): Invalid postDurationDays "' +
+              rawPost +
               '".'
           );
           continue;
@@ -387,6 +575,8 @@
           domain: domain,
           dueDate: dueDate,
           prepDurationDays: Math.round(prepDurationDays),
+          postDurationDays: Math.round(postDurationDays),
+          workloadCurve: workloadCurve,
           notes: notes,
         });
       }
@@ -399,6 +589,9 @@
       .concat(
         terms.map(function (t) {
           return t.startDate;
+        }),
+        clinicalPlacements.map(function (p) {
+          return p.startDate;
         })
       );
     const detectedStartYear = inferProgrammeStartYear(allDates);
@@ -406,22 +599,28 @@
     return {
       deadlines: deadlines,
       terms: terms,
+      clinicalPlacements: clinicalPlacements,
       detectedStartYear: detectedStartYear,
       errors: errors,
       warnings: warnings,
     };
   }
 
-  function serializeToJson(programmeStartYear, deadlines, terms) {
-    return JSON.stringify(
-      {
-        programmeStartYear: programmeStartYear,
-        deadlines: deadlines,
-        terms: terms,
-      },
-      null,
-      2
-    );
+  function serializeToJson(
+    programmeStartYear,
+    deadlines,
+    terms,
+    clinicalPlacements
+  ) {
+    const out = {
+      programmeStartYear: programmeStartYear,
+      deadlines: deadlines,
+      terms: terms,
+    };
+    if (Array.isArray(clinicalPlacements) && clinicalPlacements.length > 0) {
+      out.clinicalPlacements = clinicalPlacements;
+    }
+    return JSON.stringify(out, null, 2);
   }
 
   function escapeCsvCell(val) {
@@ -433,9 +632,9 @@
     return str;
   }
 
-  function serializeToCsv(deadlines, terms) {
+  function serializeToCsv(deadlines, terms, clinicalPlacements) {
     const header =
-      'type,id,title,domain,dueDate,prepDurationDays,startDate,endDate,notes';
+      'type,id,title,domain,dueDate,prepDurationDays,postDurationDays,workloadCurve,startDate,endDate,notes';
     const rows = [header];
 
     deadlines.forEach(function (d) {
@@ -446,7 +645,9 @@
           escapeCsvCell(d.title),
           escapeCsvCell(d.domain),
           escapeCsvCell(d.dueDate),
-          escapeCsvCell(d.prepDurationDays),
+          escapeCsvCell(d.prepDurationDays ?? 0),
+          escapeCsvCell(d.postDurationDays ?? 0),
+          escapeCsvCell(d.workloadCurve === 'linear' ? 'linear' : 'exponential'),
           '',
           '',
           escapeCsvCell(d.notes || ''),
@@ -454,12 +655,34 @@
       );
     });
 
+    if (Array.isArray(clinicalPlacements)) {
+      clinicalPlacements.forEach(function (p) {
+        rows.push(
+          [
+            'placement',
+            escapeCsvCell(p.id),
+            escapeCsvCell(p.name),
+            'clinical',
+            '',
+            escapeCsvCell(p.endLoadDays ?? 14),
+            escapeCsvCell(p.startLoadDays ?? 14),
+            escapeCsvCell(p.workloadCurve === 'linear' ? 'linear' : 'exponential'),
+            escapeCsvCell(p.startDate),
+            escapeCsvCell(p.endDate),
+            escapeCsvCell(p.notes || ''),
+          ].join(',')
+        );
+      });
+    }
+
     terms.forEach(function (t) {
       rows.push(
         [
           'term',
           escapeCsvCell(t.id),
           escapeCsvCell(t.name),
+          '',
+          '',
           '',
           '',
           '',

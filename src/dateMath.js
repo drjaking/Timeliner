@@ -6,6 +6,8 @@
 (function (global) {
   const MS_PER_DAY = 86400000;
 
+  const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
   const MONTH_NAMES_SHORT = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -113,15 +115,16 @@
     const ms = parseIsoToUtcMs(isoDate);
     if (Number.isNaN(ms)) return isoDate;
     const d = new Date(ms);
+    const dow = DAY_NAMES_SHORT[d.getUTCDay()];
     const day = String(d.getUTCDate()).padStart(2, '0');
     const month = MONTH_NAMES_SHORT[d.getUTCMonth()];
     const year = d.getUTCFullYear();
-    if (!includeRelative) return `${day} ${month} ${year}`;
+    if (!includeRelative) return `${dow} ${day} ${month} ${year}`;
 
     const offset = dateToDayOffset(isoDate, startYear);
     const progYear = offset < 365 ? 1 : offset < 730 ? 2 : 3;
     const weekNum = Math.floor(offset / 7) + 1;
-    return `${day} ${month} ${year} (Y${progYear}·W${weekNum})`;
+    return `${dow} ${day} ${month} ${year} (Y${progYear}·W${weekNum})`;
   }
 
   function generateYearBoundaries(startYear) {
@@ -175,21 +178,138 @@
     return months;
   }
 
-  function computeWeeklyLoadSlices(deadlines, startYear) {
+  function evaluateWorkloadCurve(u, curve) {
+    const clamped = Math.max(0, Math.min(1, u));
+    if (curve === 'linear') {
+      return 0.1 + 0.9 * clamped;
+    }
+    // Exponential curve matching the visual gradient stops
+    const expNorm = (Math.exp(3 * clamped) - 1) / (Math.exp(3) - 1);
+    return 0.04 + 0.96 * expNorm;
+  }
+
+  function sampleIntervalWeekLoad(entry, weekStartDay, weekEndDay) {
+    const spanDays = Math.max(1, weekEndDay - weekStartDay);
+    const prepDays = Math.max(0, entry.dueDay - entry.prepStartDay);
+    const postDays = Math.max(0, entry.postEndDay - entry.dueDay);
+    const curve =
+      entry.curve === 'linear' ? 'linear' : 'exponential';
+
+    let sumIntensity = 0;
+    for (let d = weekStartDay; d < weekEndDay; d++) {
+      if (d < entry.prepStartDay || d > entry.postEndDay) continue;
+      if (d === entry.dueDay) {
+        sumIntensity += 1.0;
+      } else if (d < entry.dueDay && prepDays > 0) {
+        const u = 1 - (entry.dueDay - d) / prepDays;
+        sumIntensity += evaluateWorkloadCurve(u, curve);
+      } else if (d > entry.dueDay && postDays > 0) {
+        const u = 1 - (d - entry.dueDay) / postDays;
+        sumIntensity += evaluateWorkloadCurve(u, curve);
+      }
+    }
+    return sumIntensity / spanDays;
+  }
+
+  function getRainbowHeatColor(normalizedLoad, alpha) {
+    const t = Math.max(0, Math.min(1, Number(normalizedLoad) || 0));
+    // Classic rainbow convention: 240deg (Blue = lowest) -> 180deg (Cyan) -> 120deg (Green) -> 60deg (Yellow) -> 30deg (Orange) -> 0deg (Red = highest)
+    const hue = Math.round((1 - t) * 240);
+    const sat = 84;
+    const light = t > 0.6 && t < 0.85 ? 48 : 46;
+    if (typeof alpha === 'number') {
+      return `hsla(${hue}, ${sat}%, ${light}%, ${alpha})`;
+    }
+    return `hsl(${hue}, ${sat}%, ${light}%)`;
+  }
+
+  function computeWeeklyLoadSlices(deadlines, arg2, arg3) {
+    let startYear = 2026;
+    let clinicalPlacements = [];
+    if (Array.isArray(arg2)) {
+      clinicalPlacements = arg2;
+      if (typeof arg3 === 'number') startYear = arg3;
+    } else {
+      if (typeof arg2 === 'number') startYear = arg2;
+      if (Array.isArray(arg3)) clinicalPlacements = arg3;
+    }
+
     const totalDays = getTotalProgrammeDays(startYear);
     const totalWeeks = Math.ceil(totalDays / 7);
 
     const intervals = deadlines.map(function (d) {
       const dueDay = dateToDayOffset(d.dueDate, startYear);
-      const prepStartDay = dueDay - Math.max(1, Number(d.prepDurationDays) || 1);
+      const prepDays = Math.max(
+        0,
+        d.prepDurationDays !== undefined ? Number(d.prepDurationDays) : 14
+      );
+      const postDays = Math.max(0, Number(d.postDurationDays) || 0);
+      const prepStartDay = dueDay - prepDays;
+      const postEndDay = dueDay + postDays;
+      const curve = d.workloadCurve === 'linear' ? 'linear' : 'exponential';
       return {
         item: d,
         prepStartDay: prepStartDay,
         dueDay: dueDay,
+        postEndDay: postEndDay,
+        curve: curve,
       };
     });
 
+    if (Array.isArray(clinicalPlacements)) {
+      for (let p = 0; p < clinicalPlacements.length; p++) {
+        const pl = clinicalPlacements[p];
+        if (!pl || !pl.startDate || !pl.endDate) continue;
+        const startDay = dateToDayOffset(pl.startDate, startYear);
+        const endDay = dateToDayOffset(pl.endDate, startYear);
+        const startLoadDays = Math.max(
+          0,
+          pl.startLoadDays !== undefined ? Number(pl.startLoadDays) : 14
+        );
+        const endLoadDays = Math.max(
+          0,
+          pl.endLoadDays !== undefined ? Number(pl.endLoadDays) : 14
+        );
+        const plCurve =
+          pl.workloadCurve === 'linear' ? 'linear' : 'exponential';
+
+        if (startLoadDays > 0) {
+          intervals.push({
+            item: {
+              id: pl.id + '-start-load',
+              title: pl.name + ' (Start Load)',
+              domain: 'clinical',
+              dueDate: pl.startDate,
+              workloadCurve: plCurve,
+            },
+            prepStartDay: startDay,
+            dueDay: startDay,
+            postEndDay: startDay + startLoadDays,
+            curve: plCurve,
+          });
+        }
+
+        if (endLoadDays > 0) {
+          intervals.push({
+            item: {
+              id: pl.id + '-end-load',
+              title: pl.name + ' (End Load)',
+              domain: 'clinical',
+              dueDate: pl.endDate,
+              workloadCurve: plCurve,
+            },
+            prepStartDay: endDay - endLoadDays,
+            dueDay: endDay,
+            postEndDay: endDay,
+            curve: plCurve,
+          });
+        }
+      }
+    }
+
     const slices = [];
+    let maxLoadScore = 0;
+
     for (let w = 0; w < totalWeeks; w++) {
       const startDay = w * 7;
       const endDay = Math.min(totalDays, (w + 1) * 7);
@@ -201,20 +321,39 @@
       let academicCount = 0;
       let clinicalCount = 0;
       let researchCount = 0;
+      let academicLoad = 0;
+      let clinicalLoad = 0;
+      let researchLoad = 0;
       const activeTitles = [];
 
       for (let i = 0; i < intervals.length; i++) {
         const entry = intervals[i];
-        if (entry.prepStartDay <= endDay - 1 && entry.dueDay >= startDay) {
-          if (entry.item.domain === 'academic') academicCount++;
-          if (entry.item.domain === 'clinical') clinicalCount++;
-          if (entry.item.domain === 'research') researchCount++;
+        if (entry.prepStartDay <= endDay - 1 && entry.postEndDay >= startDay) {
+          const sampledLoad = sampleIntervalWeekLoad(entry, startDay, endDay);
+          if (entry.item.domain === 'academic') {
+            academicCount++;
+            academicLoad += sampledLoad;
+          }
+          if (entry.item.domain === 'clinical') {
+            clinicalCount++;
+            clinicalLoad += sampledLoad;
+          }
+          if (entry.item.domain === 'research') {
+            researchCount++;
+            researchLoad += sampledLoad;
+          }
           activeTitles.push({
             title: entry.item.title,
             domain: entry.item.domain,
             dueDate: entry.item.dueDate,
+            sampledLoad: sampledLoad,
           });
         }
+      }
+
+      const loadScore = academicLoad + clinicalLoad + researchLoad;
+      if (loadScore > maxLoadScore) {
+        maxLoadScore = loadScore;
       }
 
       let activeDomainsCount = 0;
@@ -233,55 +372,116 @@
         academicCount: academicCount,
         clinicalCount: clinicalCount,
         researchCount: researchCount,
+        academicLoad: academicLoad,
+        clinicalLoad: clinicalLoad,
+        researchLoad: researchLoad,
+        loadScore: loadScore,
+        normalizedLoad: 0,
         totalActivePrepItems: academicCount + clinicalCount + researchCount,
         activeDomainsCount: activeDomainsCount,
         activeTitles: activeTitles,
       });
     }
+
+    const normDenom = maxLoadScore > 0 ? maxLoadScore : 1;
+    for (let w = 0; w < slices.length; w++) {
+      slices[w].normalizedLoad = slices[w].loadScore / normDenom;
+      slices[w].maxLoadScore = maxLoadScore;
+    }
+
     return slices;
   }
 
   function buildPreparationGradient(rgb, curve) {
-    if (curve === 'exponential') {
-      return `linear-gradient(to bottom, rgba(${rgb}, 0.03) 0%, rgba(${rgb}, 0.06) 25%, rgba(${rgb}, 0.14) 50%, rgba(${rgb}, 0.30) 70%, rgba(${rgb}, 0.52) 85%, rgba(${rgb}, 0.75) 100%)`;
+    if (curve === 'linear') {
+      return `linear-gradient(to bottom, rgba(${rgb}, 0.03) 0%, rgba(${rgb}, 0.75) 100%)`;
     }
-    return `linear-gradient(to bottom, rgba(${rgb}, 0.03) 0%, rgba(${rgb}, 0.75) 100%)`;
+    return `linear-gradient(to bottom, rgba(${rgb}, 0.03) 0%, rgba(${rgb}, 0.06) 25%, rgba(${rgb}, 0.14) 50%, rgba(${rgb}, 0.30) 70%, rgba(${rgb}, 0.52) 85%, rgba(${rgb}, 0.75) 100%)`;
   }
 
-  function layoutColumnDeadlines(items, startYear, pxPerDay, splitLanes) {
+  function buildPostGradient(rgb, curve) {
+    if (curve === 'linear') {
+      return `linear-gradient(to bottom, rgba(${rgb}, 0.75) 0%, rgba(${rgb}, 0.03) 100%)`;
+    }
+    return `linear-gradient(to bottom, rgba(${rgb}, 0.75) 0%, rgba(${rgb}, 0.52) 15%, rgba(${rgb}, 0.30) 30%, rgba(${rgb}, 0.14) 50%, rgba(${rgb}, 0.06) 75%, rgba(${rgb}, 0.03) 100%)`;
+  }
+
+  function layoutColumnDeadlines(
+    items,
+    startYear,
+    pxPerDay,
+    splitLanes,
+    clinicalPlacements
+  ) {
     const sorted = items.slice().sort(function (a, b) {
       const diff =
         dateToDayOffset(a.dueDate, startYear) -
         dateToDayOffset(b.dueDate, startYear);
       if (diff !== 0) return diff;
-      return b.prepDurationDays - a.prepDurationDays;
+      return (b.prepDurationDays || 0) - (a.prepDurationDays || 0);
     });
 
     const base = sorted.map(function (item) {
       const dueDay = dateToDayOffset(item.dueDate, startYear);
-      const prepDays = Math.max(1, Number(item.prepDurationDays) || 1);
+      const prepDays = Math.max(
+        0,
+        item.prepDurationDays !== undefined ? Number(item.prepDurationDays) : 14
+      );
+      const postDays = Math.max(0, Number(item.postDurationDays) || 0);
       const prepStartDay = dueDay - prepDays;
+      const postEndDay = dueDay + postDays;
       const yDue = dueDay * pxPerDay;
       const yStart = prepStartDay * pxPerDay;
-      const heightPx = Math.max(4, yDue - yStart);
+      const yEnd = postEndDay * pxPerDay;
+      const heightPx = prepDays > 0 ? Math.max(4, yDue - yStart) : 0;
+      const postHeightPx = postDays > 0 ? Math.max(4, yEnd - yDue) : 0;
       return {
         item: item,
         dueDay: dueDay,
         prepStartDay: prepStartDay,
+        postEndDay: postEndDay,
         yDue: yDue,
         yStart: yStart,
+        yEnd: yEnd,
         heightPx: heightPx,
+        postHeightPx: postHeightPx,
         laneIndex: 0,
         totalLanes: 1,
       };
     });
 
-    if (!splitLanes || base.length <= 1) return base;
+    const placementLoadSpans = [];
+    if (Array.isArray(clinicalPlacements)) {
+      for (let p = 0; p < clinicalPlacements.length; p++) {
+        const pl = clinicalPlacements[p];
+        if (!pl || !pl.startDate || !pl.endDate) continue;
+        const sDay = dateToDayOffset(pl.startDate, startYear);
+        const eDay = dateToDayOffset(pl.endDate, startYear);
+        const sLoad = Math.max(
+          0,
+          pl.startLoadDays !== undefined ? Number(pl.startLoadDays) : 14
+        );
+        const eLoad = Math.max(
+          0,
+          pl.endLoadDays !== undefined ? Number(pl.endLoadDays) : 14
+        );
+        if (sLoad > 0) {
+          placementLoadSpans.push({ startDay: sDay, endDay: sDay + sLoad });
+        }
+        if (eLoad > 0) {
+          placementLoadSpans.push({ startDay: eDay - eLoad, endDay: eDay });
+        }
+      }
+    }
+
+    if (!splitLanes || (base.length <= 1 && placementLoadSpans.length === 0)) {
+      return base;
+    }
 
     const clusters = [];
     let currentCluster = [];
     let clusterMaxEndDay = -Infinity;
-    const visualBufferDays = Math.ceil(30 / Math.max(1, pxPerDay));
+    const visualBufferDays = Math.ceil(36 / Math.max(1, pxPerDay));
 
     for (let i = 0; i < base.length; i++) {
       const entry = base[i];
@@ -290,11 +490,11 @@
         entry.prepStartDay <= clusterMaxEndDay + visualBufferDays
       ) {
         currentCluster.push(entry);
-        clusterMaxEndDay = Math.max(clusterMaxEndDay, entry.dueDay);
+        clusterMaxEndDay = Math.max(clusterMaxEndDay, entry.postEndDay);
       } else {
         clusters.push(currentCluster);
         currentCluster = [entry];
-        clusterMaxEndDay = entry.dueDay;
+        clusterMaxEndDay = entry.postEndDay;
       }
     }
     if (currentCluster.length > 0) clusters.push(currentCluster);
@@ -308,17 +508,44 @@
         for (let l = 0; l < laneEndDays.length; l++) {
           if (entry.prepStartDay > laneEndDays[l] + visualBufferDays) {
             assignedLane = l;
-            laneEndDays[l] = entry.dueDay;
+            laneEndDays[l] = entry.postEndDay;
             break;
           }
         }
         if (assignedLane === -1) {
           assignedLane = laneEndDays.length;
-          laneEndDays.push(entry.dueDay);
+          laneEndDays.push(entry.postEndDay);
         }
         entry.laneIndex = assignedLane;
       }
-      const totalLanes = Math.max(1, laneEndDays.length);
+      let totalLanes = Math.max(1, laneEndDays.length);
+
+      // If any item in this cluster overlaps a clinical placement's start/end workload,
+      // reserve lane 0 on the left for the placement workload tail/handle and shift the cluster right.
+      if (placementLoadSpans.length > 0) {
+        let overlapsPlacementLoad = false;
+        for (let j = 0; j < cluster.length; j++) {
+          const entry = cluster[j];
+          for (let k = 0; k < placementLoadSpans.length; k++) {
+            const span = placementLoadSpans[k];
+            if (
+              entry.prepStartDay <= span.endDay + visualBufferDays &&
+              entry.postEndDay >= span.startDay - visualBufferDays
+            ) {
+              overlapsPlacementLoad = true;
+              break;
+            }
+          }
+          if (overlapsPlacementLoad) break;
+        }
+        if (overlapsPlacementLoad) {
+          totalLanes += 1;
+          for (let j = 0; j < cluster.length; j++) {
+            cluster[j].laneIndex += 1;
+          }
+        }
+      }
+
       for (let j = 0; j < cluster.length; j++) {
         cluster[j].totalLanes = totalLanes;
       }
@@ -341,8 +568,11 @@
     formatAcademicDate: formatAcademicDate,
     generateYearBoundaries: generateYearBoundaries,
     generateMonthBoundaries: generateMonthBoundaries,
+    evaluateWorkloadCurve: evaluateWorkloadCurve,
+    getRainbowHeatColor: getRainbowHeatColor,
     computeWeeklyLoadSlices: computeWeeklyLoadSlices,
     buildPreparationGradient: buildPreparationGradient,
+    buildPostGradient: buildPostGradient,
     layoutColumnDeadlines: layoutColumnDeadlines,
   };
 })(window);

@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "start": "node --no-warnings --experimental-sqlite server.cjs",
+    "dev": "node --no-warnings --experimental-sqlite server.cjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

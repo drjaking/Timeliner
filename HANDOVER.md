@@ -24,14 +24,17 @@ We are building a formal, light-themed web application for longitudinal academic
 2. **Vertical Timeline Orientation**:
    - Time flows vertically from top to bottom starting at **01 September 2026 (`Y = 0`)** through **30 September 2029** (extended through end of September of Year 3 to accommodate final Viva Voce & Placement 6 completion).
    - All date math uses **UTC midnight (`Date.UTC`)** so UK BST/GMT Daylight Saving transitions never introduce 1-hour rounding drift.
-3. **Zero-Dependency Browser Runtime (Primary Active Codebase)**:
-   - Because the initial workstation did not have `npm` on the system `PATH`, the application runs directly in the browser from `index.html` using:
+3. **Zero-Dependency LAN Web Server + SQLite Database Runtime (Primary Active Codebase)**:
+   - Designed to run on a standard desktop as a shared LAN resource with minimal memory (~25 MB RAM) and 0% idle CPU, requiring **zero `node_modules` packages**:
+     - `server.cjs` (Built-in `node:http` web server + `node:sqlite` database engine in WAL mode at `data/timeliner.db` + real-time Server-Sent Events `/api/events` broadcaster)
+     - `start-server.bat` (One-click Windows launcher)
      - `index.html`
      - `styles.css`
      - `src/dateMath.js` (`window.TimelinerDateMath`)
      - `src/schemaParser.js` (`window.TimelinerSchemaParser`)
-     - `src/app.js` (Main state, seeded datasets, DOM renderer, pointer-event handlers, `localStorage` persistence)
-   - *(Note: There are also early TypeScript files under `src/*.tsx` and `src/utils/*.ts` from initial scaffolding, but **`index.html` + `styles.css` + `src/dateMath.js` + `src/schemaParser.js` + `src/app.js`** is the live, authoritative application.)*
+     - `src/seedData.js` (`window.TimelinerSeedData` — shared UMD module for both Node.js SQLite seeding and browser fallback)
+     - `src/app.js` (Main state, DOM renderer, pointer-event handlers, granular SQLite REST API + SSE live multi-user sync, with offline `localStorage` fallback)
+   - *(Note: There are also early TypeScript files under `src/*.tsx` and `src/utils/*.ts` from initial scaffolding, but **`server.cjs` + `index.html` + `styles.css` + `src/dateMath.js` + `src/schemaParser.js` + `src/seedData.js` + `src/app.js`** is the live, authoritative application.)*
 
 ---
 
@@ -54,12 +57,12 @@ We are building a formal, light-themed web application for longitudinal academic
    - Docked to the right of the main scrollable viewport (`.macro-heatmap-panel`), compressing all **161 weeks** of the 3-year programme into 100% of the vertical screen height without scrolling.
    - Displays Year markers (`Y1`, `Y2`, `Y3`), quarterly month ticks, 3 domain activity micro-columns (`A · C · R`), and horizontal weekly workload intensity bars (`#64748B` for 1 item, `#1E40AF` for 2 items, `#D97706` for 2-domain collision / 3+ items, `#991B1B` for 3-domain collision).
    - Includes a synchronized **Viewport Lens** (`#macro-viewport-lens`) and supports **click-and-drag vertical scrubbing** to jump immediately to any week across the 3-year timeline.
-6. **CRUD, Modal Editing, Deletion & Persistence**:
+6. **CRUD, Modal Editing, Deletion & Shared LAN SQLite Persistence**:
    - **Edit & Delete**: Clicking `✎` on any deadline card (or clicking any UCL Term block) opens the Edit Modal with working **Save Changes**, **Delete**, **Cancel**, **Close**, backdrop-click, and `Esc` key handlers. Each deadline card also has a direct **`×` quick-delete** button.
-   - **Local Storage Persistence (`ucl_longitudinal_programme_sequencer_v1`)**:
-     - Every edit, addition, deletion, drag reschedule, or prep-window resize auto-saves immediately to `localStorage`.
-     - Tracks `deletedSeedIds` so deleted default items are **never** re-inserted on page reload.
-     - Includes an explicit **`✓ Saved HH:MM:SS` (`Commit / Save`)** button in the top toolbar and a **`Reset`** button (with confirmation) to restore the default dataset.
+   - **Shared SQLite Database (`data/timeliner.db`) & Real-Time LAN Sync**:
+     - Granular REST endpoints (`GET/PUT /api/state`, `POST/DELETE /api/deadlines`, `POST/DELETE /api/terms`, `PUT /api/settings`, `POST /api/reset`) persist every edit, drag reschedule, or prep-window resize to SQLite in WAL mode.
+     - Server-Sent Events (`GET /api/events`) push changes in real time to all connected LAN browsers and display a live `LAN SQLite · HH:MM:SS (N online)` status indicator in the top toolbar.
+     - Automatically migrates any pre-existing `localStorage` changes on first connection and retains `localStorage` (`ucl_longitudinal_programme_sequencer_v1`) as an offline cache fallback.
    - **Bulk Import / Export Modal**: Supports pasting or uploading `.json` or `.csv` schedules (in `Append / Update` or `Replace All` mode) and exporting/downloading the current sequenced schedule as `.json` or `.csv`.
 
 ---

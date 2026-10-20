@@ -7,533 +7,31 @@
 (function (global) {
   const DateMath = global.TimelinerDateMath;
   const SchemaParser = global.TimelinerSchemaParser;
+  const SeedData = global.TimelinerSeedData;
 
   const STORAGE_KEY = 'ucl_longitudinal_programme_sequencer_v1';
+  const MIGRATED_TO_SERVER_KEY = 'ucl_timeliner_migrated_to_sqlite_v1';
+  const CLIENT_ID = SchemaParser.generateId('client');
 
-  /**
-   * User-supplied Research Deadlines & Committee Meetings (Cohort starting Sept 2026).
-   * - Intake 2026 items map directly to Year 1 (2026/27).
-   * - Intake 2025 items are projected +52 weeks (364 days, preserving Friday) into Year 2 (2027/28).
-   * - Intake 2024 items are projected +104 weeks (728 days, preserving Friday) into Year 3 (2028/29).
-   */
-  const INITIAL_RESEARCH_DEADLINES = [
-    // Research Committee Meetings (2026/27)
-    {
-      id: 'res-comm-2026-11-13',
-      title: 'Research Committee Meeting (Autumn)',
-      domain: 'research',
-      dueDate: '2026-11-13',
-      prepDurationDays: 14,
-      notes: 'Research Committee Meeting Date — Friday 13 November 2026',
-    },
-    {
-      id: 'res-comm-2027-05-07',
-      title: 'Research Committee Meeting (Spring)',
-      domain: 'research',
-      dueDate: '2027-05-07',
-      prepDurationDays: 14,
-      notes: 'Research Committee Meeting Date — Friday 7 May 2027',
-    },
-
-    // Year 1 (2026/27) — Intake 2026
-    {
-      id: 'res-y1-orientation-2027-02-04',
-      title: 'Project Orientation Session',
-      domain: 'research',
-      dueDate: '2027-02-04',
-      prepDurationDays: 7,
-      notes: 'Intake 2026 (Y1) — Thursday 4 February 2027',
-    },
-    {
-      id: 'res-y1-soi-2027-05-06',
-      title: 'Statement of Intent',
-      domain: 'research',
-      dueDate: '2027-05-06',
-      prepDurationDays: 21,
-      notes: 'Intake 2026 (Y1) — Thursday 6 May 2027',
-    },
-    {
-      id: 'res-y1-proposal-2027-07-09',
-      title: 'Research Proposal',
-      domain: 'research',
-      dueDate: '2027-07-09',
-      prepDurationDays: 35,
-      notes: 'Intake 2026 (Y1) — Friday 9 July 2027',
-    },
-
-    // Year 2 (2027/28) — Projected from Intake 2025 (+52 weeks, preserving Friday)
-    {
-      id: 'res-y2-funding-2027-12-03',
-      title: 'Research Funding',
-      domain: 'research',
-      dueDate: '2027-12-03',
-      prepDurationDays: 21,
-      notes: 'Year 2 (+52w from Intake 2025: Fri 4 Dec 2026 -> Fri 3 Dec 2027)',
-    },
-    {
-      id: 'res-y2-review1-2028-02-11',
-      title: 'Progress Review & Research Log (Y2T2)',
-      domain: 'research',
-      dueDate: '2028-02-11',
-      prepDurationDays: 14,
-      notes: 'Year 2 (+52w from Intake 2025: Fri 12 Feb 2027 -> Fri 11 Feb 2028)',
-    },
-    {
-      id: 'res-y2-review2-2028-06-30',
-      title: 'Second Six-Monthly Progress Review & Research Log (Y2T3)',
-      domain: 'research',
-      dueDate: '2028-06-30',
-      prepDurationDays: 14,
-      notes: 'Year 2 (+52w from Intake 2025: Fri 2 Jul 2027 -> Fri 30 Jun 2028)',
-    },
-    {
-      id: 'res-y2-litsearch-2028-09-08',
-      title: 'Literature Review Searches',
-      domain: 'research',
-      dueDate: '2028-09-08',
-      prepDurationDays: 28,
-      notes: 'Year 2/3 transition (+52w from Intake 2025: Fri 10 Sep 2027 -> Fri 8 Sep 2028)',
-    },
-
-    // Year 3 (2028/29) — Projected from Intake 2024 (+104 weeks, preserving Friday)
-    {
-      id: 'res-y3-litreview-2028-11-17',
-      title: 'Literature Review',
-      domain: 'research',
-      dueDate: '2028-11-17',
-      prepDurationDays: 42,
-      notes: 'Year 3 (+104w from Intake 2024: Fri 20 Nov 2026 -> Fri 17 Nov 2028)',
-    },
-    {
-      id: 'res-y3-review3-2029-01-26',
-      title: 'Third Six-Monthly Progress Review (Y3T2)',
-      domain: 'research',
-      dueDate: '2029-01-26',
-      prepDurationDays: 14,
-      notes: 'Year 3 (+104w from Intake 2024: Fri 29 Jan 2027 -> Fri 26 Jan 2029)',
-    },
-    {
-      id: 'res-y3-titleabstract-2029-03-02',
-      title: 'Title and Abstract',
-      domain: 'research',
-      dueDate: '2029-03-02',
-      prepDurationDays: 14,
-      notes: 'Year 3 (+104w from Intake 2024: Fri 5 Mar 2027 -> Fri 2 Mar 2029)',
-    },
-    {
-      id: 'res-y3-thesisvol1-2029-06-08',
-      title: 'Thesis Volume 1 Submission',
-      domain: 'research',
-      dueDate: '2029-06-08',
-      prepDurationDays: 60,
-      notes: 'Year 3 (+104w from Intake 2024: Fri 11 Jun 2027 -> Fri 8 Jun 2029)',
-    },
-    {
-      id: 'res-y3-vivas-2029-08-31',
-      title: 'Vivas (July to September Window)',
-      domain: 'research',
-      dueDate: '2029-08-31',
-      prepDurationDays: 60,
-      notes: 'Year 3 Viva Voce examination window (1 Jul 2029 – 31 Aug 2029)',
-    },
-  ];
-
-  /**
-   * User-supplied Immovable Clinical Placement Windows (2026 Intake Cohort across Years 1-3).
-   * Rendered as locked, non-draggable background spans in the Clinical column.
-   * Excluded from preparation workload heat-strip calculations.
-   */
-  const INITIAL_CLINICAL_PLACEMENTS = [
-    // Year 1 (2026/27) — 2026 Intake
-    {
-      id: 'clin-pl-y1-p1',
-      name: 'Placement 1 (Y1)',
-      startDate: '2026-10-28',
-      endDate: '2027-04-09',
-      notes: '2026 Intake — Wed 28 Oct 2026 to Fri 09 Apr 2027 (Immovable)',
-    },
-    {
-      id: 'clin-pl-y1-p2',
-      name: 'Placement 2 (Y1)',
-      startDate: '2027-04-12',
-      endDate: '2027-10-01',
-      notes: '2026 Intake — Mon 12 Apr 2027 to Fri 01 Oct 2027 (Immovable)',
-    },
-    // Year 2 (2027/28) — Projected from 2025 Intake (+52 weeks)
-    {
-      id: 'clin-pl-y2-p3',
-      name: 'Placement 3 (Y2)',
-      startDate: '2027-10-04',
-      endDate: '2028-03-31',
-      notes: 'Year 2 (+52w from 2025 Intake: Mon 05 Oct 2026 - Fri 02 Apr 2027) (Immovable)',
-    },
-    {
-      id: 'clin-pl-y2-p4',
-      name: 'Placement 4 (Y2)',
-      startDate: '2028-04-03',
-      endDate: '2028-09-29',
-      notes: 'Year 2 (+52w from 2025 Intake: Mon 05 Apr 2027 - Fri 01 Oct 2027) (Immovable)',
-    },
-    // Year 3 (2028/29) — Projected from 2024 Intake (+104 weeks)
-    {
-      id: 'clin-pl-y3-p5',
-      name: 'Placement 5 (Y3)',
-      startDate: '2028-10-02',
-      endDate: '2029-03-23',
-      notes: 'Year 3 (+104w from 2024 Intake: Mon 05 Oct 2026 - Fri 26 Mar 2027) (Immovable)',
-    },
-    {
-      id: 'clin-pl-y3-p6',
-      name: 'Placement 6 (Y3)',
-      startDate: '2029-03-26',
-      endDate: '2029-09-17',
-      notes: 'Year 3 (+104w from 2024 Intake: Mon 29 Mar 2027 - Mon 20 Sep 2027) (Immovable)',
-    },
-  ];
-
-  /**
-   * User-supplied Clinical Placement Contract & MPR-EPR/Clinical Portfolio Deadlines
-   * Projected across Years 1-3 for the 2026 Intake cohort.
-   */
-  const INITIAL_CLINICAL_DEADLINES = [
-    // Year 1 (2026/27) — 2026 Intake
-    {
-      id: 'clin-dl-y1-p1-contract',
-      title: 'Placement 1 Contract',
-      domain: 'clinical',
-      dueDate: '2026-11-13',
-      prepDurationDays: 7,
-      notes: '2026 Intake (Y1) — Placement 1 Contract submission (Fri 13 Nov 2026)',
-    },
-    {
-      id: 'clin-dl-y1-p1-portfolio',
-      title: 'Placement 1 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2027-04-16',
-      prepDurationDays: 14,
-      notes: '2026 Intake (Y1) — MPR-EPR form & Clinical Portfolio (Fri 16 Apr 2027)',
-    },
-    {
-      id: 'clin-dl-y1-p2-contract',
-      title: 'Placement 2 Contract',
-      domain: 'clinical',
-      dueDate: '2027-04-30',
-      prepDurationDays: 7,
-      notes: '2026 Intake (Y1) — Placement 2 Contract submission (Fri 30 Apr 2027)',
-    },
-    {
-      id: 'clin-dl-y1-p2-portfolio',
-      title: 'Placement 2 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2027-10-08',
-      prepDurationDays: 14,
-      notes: '2026 Intake (Y1/Y2 transition) — MPR-EPR form & Clinical Portfolio (Fri 08 Oct 2027)',
-    },
-
-    // Year 2 (2027/28) — Projected from 2025 Intake (+52 weeks)
-    {
-      id: 'clin-dl-y2-p3-contract',
-      title: 'Placement 3 Contract',
-      domain: 'clinical',
-      dueDate: '2027-10-22',
-      prepDurationDays: 7,
-      notes: 'Year 2 (+52w from 2025 Intake: Fri 23 Oct 2026 -> Fri 22 Oct 2027)',
-    },
-    {
-      id: 'clin-dl-y2-p3-portfolio',
-      title: 'Placement 3 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2028-04-07',
-      prepDurationDays: 14,
-      notes: 'Year 2 (+52w from 2025 Intake: Fri 09 Apr 2027 -> Fri 07 Apr 2028)',
-    },
-    {
-      id: 'clin-dl-y2-p4-contract',
-      title: 'Placement 4 Contract',
-      domain: 'clinical',
-      dueDate: '2028-04-21',
-      prepDurationDays: 7,
-      notes: 'Year 2 (+52w from 2025 Intake: Fri 23 Apr 2027 -> Fri 21 Apr 2028)',
-    },
-    {
-      id: 'clin-dl-y2-p4-portfolio',
-      title: 'Placement 4 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2028-10-06',
-      prepDurationDays: 14,
-      notes: 'Year 2/3 transition (+52w from 2025 Intake: Fri 08 Oct 2027 -> Fri 06 Oct 2028)',
-    },
-
-    // Year 3 (2028/29) — Projected from 2024 Intake (+104 weeks)
-    {
-      id: 'clin-dl-y3-p5-contract',
-      title: 'Placement 5 Contract',
-      domain: 'clinical',
-      dueDate: '2028-11-20',
-      prepDurationDays: 7,
-      notes: 'Year 3 (+104w from 2024 Intake: Mon 23 Nov 2026 -> Mon 20 Nov 2028)',
-    },
-    {
-      id: 'clin-dl-y3-p5-portfolio',
-      title: 'Placement 5 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2029-03-30',
-      prepDurationDays: 14,
-      notes: 'Year 3 (+104w from 2024 Intake: Fri 02 Apr 2027 -> Fri 30 Mar 2029)',
-    },
-    {
-      id: 'clin-dl-y3-p6-contract',
-      title: 'Placement 6 Contract',
-      domain: 'clinical',
-      dueDate: '2029-04-13',
-      prepDurationDays: 7,
-      notes: 'Year 3 (+104w from 2024 Intake: Fri 16 Apr 2027 -> Fri 13 Apr 2029)',
-    },
-    {
-      id: 'clin-dl-y3-p6-portfolio',
-      title: 'Placement 6 MPR-EPR & Clinical Portfolio',
-      domain: 'clinical',
-      dueDate: '2029-09-14',
-      prepDurationDays: 14,
-      notes: 'Year 3 Final Portfolio (+104w from 2024 Intake: Fri 17 Sep 2027 -> Fri 14 Sep 2029)',
-    },
-  ];
-
-  /**
-   * User-supplied Academic Deadlines (Clinical Reports 1–4 & Exam Papers 1–3)
-   * Projected across Years 1–3 for the 2026 Intake cohort (+52w for 2025 Intake, +104w for 2024 Intake).
-   */
-  const INITIAL_ACADEMIC_DEADLINES = [
-    // Year 1 (2026/27) — 2026 Intake
-    {
-      id: 'acad-y1-cr1-2027-01-29',
-      title: 'Clinical Report 1',
-      domain: 'academic',
-      dueDate: '2027-01-29',
-      prepDurationDays: 28,
-      notes: '2026 Intake (Y1) — Submission Deadline: Friday 29 January 2027',
-    },
-    {
-      id: 'acad-y1-cr2-2027-04-16',
-      title: 'Clinical Report 2',
-      domain: 'academic',
-      dueDate: '2027-04-16',
-      prepDurationDays: 28,
-      notes: '2026 Intake (Y1) — Submission Deadline: 10am, Friday 16 April 2027',
-    },
-    {
-      id: 'acad-y1-exam1-2027-05-17',
-      title: 'Exam Paper 1',
-      domain: 'academic',
-      dueDate: '2027-05-17',
-      prepDurationDays: 21,
-      notes: '2026 Intake (Y1) — Examination: Monday 17 May 2027',
-    },
-    {
-      id: 'acad-y1-exam2-2027-05-18',
-      title: 'Exam Paper 2',
-      domain: 'academic',
-      dueDate: '2027-05-18',
-      prepDurationDays: 21,
-      notes: '2026 Intake (Y1) — Examination: Tuesday 18 May 2027',
-    },
-
-    // Year 2 (2027/28) — Projected from 2025 Intake (+52 weeks)
-    {
-      id: 'acad-y2-cr3-2027-11-12',
-      title: 'Clinical Report 3',
-      domain: 'academic',
-      dueDate: '2027-11-12',
-      prepDurationDays: 28,
-      notes: 'Year 2 (+52w from 2025 Intake: Fri 13 Nov 2026 -> Fri 12 Nov 2027)',
-    },
-    {
-      id: 'acad-y2-exam3-2028-05-17',
-      title: 'Exam Paper 3',
-      domain: 'academic',
-      dueDate: '2028-05-17',
-      prepDurationDays: 21,
-      notes: 'Year 2 (+52w from 2025 Intake: Wed 19 May 2027 -> Wed 17 May 2028)',
-    },
-
-    // Year 3 (2028/29) — Projected from 2024 Intake (+104 weeks)
-    {
-      id: 'acad-y3-cr4-2028-10-06',
-      title: 'Clinical Report 4',
-      domain: 'academic',
-      dueDate: '2028-10-06',
-      prepDurationDays: 28,
-      notes: 'Year 3 (+104w from 2024 Intake: Fri 09 Oct 2026 -> Fri 06 Oct 2028)',
-    },
-  ];
-
-  const INITIAL_DEADLINES = INITIAL_ACADEMIC_DEADLINES.concat(
-    INITIAL_CLINICAL_DEADLINES,
-    INITIAL_RESEARCH_DEADLINES
-  );
-
-  /**
-   * Official UCL Term Dates, Reading Weeks & College Closures (2026/27, 2027/28, 2028/29)
-   * Source: https://www.ucl.ac.uk/study/current-students/life-ucl/term-dates-and-closures
-   */
-  const INITIAL_UCL_TERMS = [
-    // Academic Year 2026–27 (Year 1)
-    {
-      id: 'ucl-y1-t1',
-      name: 'Y1 Term 1 (Autumn)',
-      startDate: '2026-09-28',
-      endDate: '2026-12-11',
-    },
-    {
-      id: 'ucl-y1-t1-rw',
-      name: 'Y1 Term 1 Reading Week',
-      startDate: '2026-11-02',
-      endDate: '2026-11-06',
-    },
-    {
-      id: 'ucl-y1-xmas',
-      name: 'Y1 Winter Closure / Vacation',
-      startDate: '2026-12-12',
-      endDate: '2027-01-10',
-    },
-    {
-      id: 'ucl-y1-t2',
-      name: 'Y1 Term 2 (Spring)',
-      startDate: '2027-01-11',
-      endDate: '2027-03-24',
-    },
-    {
-      id: 'ucl-y1-t2-rw',
-      name: 'Y1 Term 2 Reading Week',
-      startDate: '2027-02-15',
-      endDate: '2027-02-19',
-    },
-    {
-      id: 'ucl-y1-easter',
-      name: 'Y1 Spring Vacation (Easter)',
-      startDate: '2027-03-25',
-      endDate: '2027-04-25',
-    },
-    {
-      id: 'ucl-y1-t3',
-      name: 'Y1 Term 3 (Summer)',
-      startDate: '2027-04-26',
-      endDate: '2027-06-11',
-    },
-    {
-      id: 'ucl-y1-summer',
-      name: 'Y1 Summer Vacation / Research Period',
-      startDate: '2027-06-12',
-      endDate: '2027-09-26',
-    },
-
-    // Academic Year 2027–28 (Year 2)
-    {
-      id: 'ucl-y2-t1',
-      name: 'Y2 Term 1 (Autumn)',
-      startDate: '2027-09-27',
-      endDate: '2027-12-10',
-    },
-    {
-      id: 'ucl-y2-t1-rw',
-      name: 'Y2 Term 1 Reading Week',
-      startDate: '2027-11-01',
-      endDate: '2027-11-05',
-    },
-    {
-      id: 'ucl-y2-xmas',
-      name: 'Y2 Winter Closure / Vacation',
-      startDate: '2027-12-11',
-      endDate: '2028-01-09',
-    },
-    {
-      id: 'ucl-y2-t2',
-      name: 'Y2 Term 2 (Spring)',
-      startDate: '2028-01-10',
-      endDate: '2028-03-24',
-    },
-    {
-      id: 'ucl-y2-t2-rw',
-      name: 'Y2 Term 2 Reading Week',
-      startDate: '2028-02-14',
-      endDate: '2028-02-18',
-    },
-    {
-      id: 'ucl-y2-easter',
-      name: 'Y2 Spring Vacation (Easter)',
-      startDate: '2028-03-25',
-      endDate: '2028-04-23',
-    },
-    {
-      id: 'ucl-y2-t3',
-      name: 'Y2 Term 3 (Summer)',
-      startDate: '2028-04-24',
-      endDate: '2028-06-09',
-    },
-    {
-      id: 'ucl-y2-summer',
-      name: 'Y2 Summer Vacation / Research Period',
-      startDate: '2028-06-10',
-      endDate: '2028-09-24',
-    },
-
-    // Academic Year 2028–29 (Year 3)
-    {
-      id: 'ucl-y3-t1',
-      name: 'Y3 Term 1 (Autumn)',
-      startDate: '2028-09-25',
-      endDate: '2028-12-08',
-    },
-    {
-      id: 'ucl-y3-t1-rw',
-      name: 'Y3 Term 1 Reading Week',
-      startDate: '2028-10-30',
-      endDate: '2028-11-03',
-    },
-    {
-      id: 'ucl-y3-xmas',
-      name: 'Y3 Winter Closure / Vacation',
-      startDate: '2028-12-09',
-      endDate: '2029-01-07',
-    },
-    {
-      id: 'ucl-y3-t2',
-      name: 'Y3 Term 2 (Spring)',
-      startDate: '2029-01-08',
-      endDate: '2029-03-23',
-    },
-    {
-      id: 'ucl-y3-t2-rw',
-      name: 'Y3 Term 2 Reading Week',
-      startDate: '2029-02-12',
-      endDate: '2029-02-16',
-    },
-    {
-      id: 'ucl-y3-easter',
-      name: 'Y3 Spring Vacation (Easter)',
-      startDate: '2029-03-24',
-      endDate: '2029-04-22',
-    },
-    {
-      id: 'ucl-y3-t3',
-      name: 'Y3 Term 3 (Summer)',
-      startDate: '2029-04-23',
-      endDate: '2029-06-08',
-    },
-    {
-      id: 'ucl-y3-summer',
-      name: 'Y3 Summer / Viva Voce Window',
-      startDate: '2029-06-09',
-      endDate: '2029-08-31',
-    },
-  ];
+  const INITIAL_DEADLINES = SeedData.INITIAL_DEADLINES;
+  const INITIAL_UCL_TERMS = SeedData.INITIAL_UCL_TERMS;
+  const INITIAL_CLINICAL_PLACEMENTS = SeedData.INITIAL_CLINICAL_PLACEMENTS;
 
   const state = {
     programmeStartYear: 2026,
     pxPerDay: 4.5,
     snapIncrementDays: 1, // 1 = Daily, 7 = Weekly
-    gradientCurve: 'linear', // 'linear' | 'exponential'
+    gradientCurve: 'exponential', // 'linear' | 'exponential'
     splitOverlappingLanes: true,
+
+    // Resizable column widths in pixels (null = flexible minmax(195px, 1fr))
+    columnWidths: {
+      academic: null,
+      clinical: null,
+      research: null,
+      terms: null,
+    },
+    colResizeOp: null,
 
     deadlines: INITIAL_DEADLINES.slice(),
     terms: INITIAL_UCL_TERMS.slice(),
@@ -552,6 +50,9 @@
     formDeadlineDueDate: '2026-11-16',
     formDeadlinePrepValue: 21,
     formDeadlinePrepUnit: 'days', // 'days' | 'weeks'
+    formDeadlinePostValue: 0,
+    formDeadlinePostUnit: 'days', // 'days' | 'weeks'
+    formDeadlineCurve: 'exponential', // 'exponential' | 'linear'
     formDeadlineNotes: '',
 
     // Add Term Form Inputs
@@ -562,14 +63,48 @@
     // Edit Modal State
     editingDeadlineId: null,
     editingTermId: null,
+    editingPlacementId: null,
 
     // Active Pointer Drag Operation
     dragOp: null,
 
-    // Persistence tracking
+    // Persistence & LAN Server Sync tracking
     deletedSeedIds: [],
     lastSavedAt: null,
+    serverConnected: false,
+    serverRevision: 1,
+    connectedClients: 1,
   };
+
+  function buildGridTemplateColumnsCss() {
+    const keys = ['academic', 'clinical', 'research', 'terms'];
+    const tracks = keys.map(function (k) {
+      const w = state.columnWidths && state.columnWidths[k];
+      return typeof w === 'number' && w >= 120
+        ? Math.round(w) + 'px'
+        : 'minmax(195px, 1fr)';
+    });
+    return '196px ' + tracks.join(' ');
+  }
+
+  function buildTimelineMinWidthCss() {
+    const keys = ['academic', 'clinical', 'research', 'terms'];
+    let hasCustom = false;
+    let totalPx = 196;
+    keys.forEach(function (k) {
+      const w = state.columnWidths && state.columnWidths[k];
+      if (typeof w === 'number' && w >= 120) {
+        hasCustom = true;
+        totalPx += Math.round(w);
+      } else {
+        totalPx += 195;
+      }
+    });
+    if (!hasCustom) {
+      return 'min-width:980px;width:100%;';
+    }
+    return `min-width:${totalPx}px;width:${totalPx}px;`;
+  }
 
   function escapeHtml(str) {
     if (str === undefined || str === null) return '';
@@ -581,17 +116,25 @@
       .replace(/'/g, '&#39;');
   }
 
-  function loadPersistedState() {
+  function loadLocalFallbackState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        savePersistedState();
-        return;
+        saveLocalCacheState();
+        return null;
       }
       const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return;
+      if (!parsed || typeof parsed !== 'object') return null;
       if (typeof parsed.programmeStartYear === 'number') {
         state.programmeStartYear = parsed.programmeStartYear;
+      }
+      if (parsed.columnWidths && typeof parsed.columnWidths === 'object') {
+        ['academic', 'clinical', 'research', 'terms'].forEach(function (k) {
+          const val = Number(parsed.columnWidths[k]);
+          if (Number.isFinite(val) && val >= 120) {
+            state.columnWidths[k] = Math.round(val);
+          }
+        });
       }
       if (Array.isArray(parsed.deletedSeedIds)) {
         state.deletedSeedIds = parsed.deletedSeedIds;
@@ -614,19 +157,23 @@
       if (typeof parsed.lastSavedAt === 'string') {
         state.lastSavedAt = parsed.lastSavedAt;
       }
+      return parsed;
     } catch (_e) {
-      // Ignore malformed storage
+      return null;
     }
   }
 
-  function savePersistedState() {
+  function saveLocalCacheState() {
     try {
       const now = new Date();
-      state.lastSavedAt = now.toTimeString().slice(0, 8);
+      if (!state.lastSavedAt) {
+        state.lastSavedAt = now.toTimeString().slice(0, 8);
+      }
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
           programmeStartYear: state.programmeStartYear,
+          columnWidths: state.columnWidths,
           deadlines: state.deadlines,
           terms: state.terms,
           clinicalPlacements: state.clinicalPlacements,
@@ -638,6 +185,233 @@
       // Ignore quota errors
     }
   }
+
+  function applyServerState(serverPayload) {
+    if (!serverPayload || typeof serverPayload !== 'object') return;
+    if (typeof serverPayload.programmeStartYear === 'number') {
+      state.programmeStartYear = serverPayload.programmeStartYear;
+    }
+    if (Array.isArray(serverPayload.deadlines)) {
+      state.deadlines = serverPayload.deadlines;
+    }
+    if (Array.isArray(serverPayload.terms)) {
+      state.terms = serverPayload.terms;
+    }
+    if (Array.isArray(serverPayload.clinicalPlacements)) {
+      state.clinicalPlacements = serverPayload.clinicalPlacements;
+    }
+    if (typeof serverPayload.revision === 'number') {
+      state.serverRevision = serverPayload.revision;
+    }
+    if (typeof serverPayload.lastSavedAt === 'string') {
+      state.lastSavedAt = serverPayload.lastSavedAt;
+    }
+    if (typeof serverPayload.connectedClients === 'number') {
+      state.connectedClients = Math.max(1, serverPayload.connectedClients);
+    }
+    saveLocalCacheState();
+  }
+
+  function isUsingHttpProtocol() {
+    return (
+      typeof window !== 'undefined' &&
+      window.location &&
+      (window.location.protocol === 'http:' ||
+        window.location.protocol === 'https:')
+    );
+  }
+
+  async function apiRequest(method, endpoint, bodyObj) {
+    if (!isUsingHttpProtocol()) return null;
+    try {
+      const opts = {
+        method: method,
+        headers: {
+          'X-Client-Id': CLIENT_ID,
+        },
+      };
+      if (bodyObj !== undefined) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(bodyObj);
+      }
+      const res = await fetch(endpoint, opts);
+      if (!res.ok) return null;
+      const data = await res.json();
+      state.serverConnected = true;
+      if (data && typeof data.lastSavedAt === 'string') {
+        state.lastSavedAt = data.lastSavedAt;
+      }
+      if (data && typeof data.revision === 'number') {
+        state.serverRevision = data.revision;
+      }
+      return data;
+    } catch (_err) {
+      state.serverConnected = false;
+      return null;
+    }
+  }
+
+  function savePersistedState() {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected) {
+      apiRequest('PUT', '/api/state', {
+        programmeStartYear: state.programmeStartYear,
+        deadlines: state.deadlines,
+        terms: state.terms,
+        clinicalPlacements: state.clinicalPlacements,
+      }).then(function (res) {
+        if (res) renderApp();
+      });
+    }
+  }
+
+  function syncSingleDeadlineToServer(deadlineItem) {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected && deadlineItem) {
+      apiRequest('POST', '/api/deadlines', deadlineItem);
+    }
+  }
+
+  function syncDeleteDeadlineToServer(deadlineId) {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected && deadlineId) {
+      apiRequest(
+        'DELETE',
+        '/api/deadlines/' + encodeURIComponent(deadlineId)
+      );
+    }
+  }
+
+  function syncSingleTermToServer(termItem) {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected && termItem) {
+      apiRequest('POST', '/api/terms', termItem);
+    }
+  }
+
+  function syncDeleteTermToServer(termId) {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected && termId) {
+      apiRequest('DELETE', '/api/terms/' + encodeURIComponent(termId));
+    }
+  }
+
+  function syncSinglePlacementToServer(placementItem) {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected && placementItem) {
+      apiRequest('POST', '/api/placements', placementItem);
+    }
+  }
+
+  function syncSettingsToServer() {
+    const now = new Date();
+    state.lastSavedAt = now.toTimeString().slice(0, 8);
+    saveLocalCacheState();
+    if (state.serverConnected) {
+      apiRequest('PUT', '/api/settings', {
+        programmeStartYear: state.programmeStartYear,
+      });
+    }
+  }
+
+  async function initPersistenceAndLanSync() {
+    const localData = loadLocalFallbackState();
+
+    if (!isUsingHttpProtocol()) {
+      return;
+    }
+
+    const serverState = await apiRequest('GET', '/api/state');
+    if (!serverState) {
+      return;
+    }
+
+    state.serverConnected = true;
+
+    // If the SQLite server is still at revision 1 (freshly initialized) and this browser
+    // has local edits in localStorage that haven't been migrated yet, migrate them up once.
+    const alreadyMigrated = localStorage.getItem(MIGRATED_TO_SERVER_KEY);
+    if (
+      serverState.revision === 1 &&
+      !alreadyMigrated &&
+      localData &&
+      Array.isArray(localData.deadlines) &&
+      localData.deadlines.length > 0
+    ) {
+      localStorage.setItem(MIGRATED_TO_SERVER_KEY, 'true');
+      const migrated = await apiRequest('PUT', '/api/state', {
+        programmeStartYear: state.programmeStartYear,
+        deadlines: state.deadlines,
+        terms: state.terms,
+        clinicalPlacements: state.clinicalPlacements,
+      });
+      if (migrated) {
+        applyServerState(migrated);
+      }
+    } else {
+      localStorage.setItem(MIGRATED_TO_SERVER_KEY, 'true');
+      applyServerState(serverState);
+    }
+
+    renderApp();
+
+    // Connect to Server-Sent Events (SSE) for instant multi-user LAN updates
+    if (typeof EventSource !== 'undefined') {
+      const evtSource = new EventSource('/api/events');
+
+      evtSource.onmessage = function (event) {
+        try {
+          const msg = JSON.parse(event.data);
+          if (!msg || typeof msg !== 'object') return;
+
+          if (msg.type === 'connected' || msg.type === 'presence') {
+            state.serverConnected = true;
+            if (typeof msg.connectedClients === 'number') {
+              state.connectedClients = Math.max(1, msg.connectedClients);
+            }
+            if (!state.dragOp) renderApp();
+          } else if (msg.type === 'state-updated') {
+            state.serverConnected = true;
+            if (msg.originClientId === CLIENT_ID) {
+              if (msg.state && typeof msg.state.lastSavedAt === 'string') {
+                state.lastSavedAt = msg.state.lastSavedAt;
+              }
+              if (msg.state && typeof msg.state.revision === 'number') {
+                state.serverRevision = msg.state.revision;
+              }
+              return;
+            }
+            if (msg.state && !state.dragOp) {
+              applyServerState(msg.state);
+              renderApp();
+            }
+          }
+        } catch (_e) {
+          // Ignore malformed SSE event
+        }
+      };
+
+      evtSource.onerror = function () {
+        if (state.serverConnected) {
+          state.serverConnected = false;
+          if (!state.dragOp) renderApp();
+        }
+      };
+    }
+  }
+
 
   function classifyTermKind(name) {
     const lower = String(name || '').toLowerCase();
@@ -658,85 +432,50 @@
   }
 
   function getHeatStripColor(slice) {
-    if (slice.totalActivePrepItems === 0) return 'transparent';
-    if (slice.activeDomainsCount === 3) return 'rgba(153, 27, 27, 0.25)';
-    if (slice.activeDomainsCount === 2) return 'rgba(217, 119, 6, 0.22)';
-    if (slice.totalActivePrepItems >= 3) return 'rgba(217, 119, 6, 0.18)';
-    if (slice.totalActivePrepItems === 2) return 'rgba(30, 64, 175, 0.14)';
-    return 'rgba(100, 116, 139, 0.10)';
+    const norm = slice && typeof slice.normalizedLoad === 'number' ? slice.normalizedLoad : 0;
+    return DateMath.getRainbowHeatColor(norm, 0.18);
   }
 
   function getHeatBadgeStyle(slice) {
-    if (slice.activeDomainsCount === 3) {
-      return 'background:#991B1B;color:#FFFFFF;';
-    }
-    if (slice.activeDomainsCount === 2 || slice.totalActivePrepItems >= 3) {
-      return 'background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;';
-    }
-    return 'background:#E2E8F0;color:#334155;';
-  }
-
-  function getMacroHeatmapCellBg(slice) {
-    if (slice.totalActivePrepItems === 0) return '#F8FAFC';
-    if (slice.activeDomainsCount === 3) return 'rgba(153, 27, 27, 0.28)';
-    if (slice.activeDomainsCount === 2) return 'rgba(217, 119, 6, 0.22)';
-    if (slice.totalActivePrepItems >= 3) return 'rgba(234, 88, 12, 0.18)';
-    if (slice.totalActivePrepItems === 2) return 'rgba(30, 64, 175, 0.13)';
-    return 'rgba(100, 116, 139, 0.08)';
-  }
-
-  function getMacroHeatmapBarColor(slice) {
-    if (slice.totalActivePrepItems === 0) return 'transparent';
-    if (slice.activeDomainsCount === 3) return '#991B1B';
-    if (slice.activeDomainsCount === 2) return '#D97706';
-    if (slice.totalActivePrepItems >= 3) return '#EA580C';
-    if (slice.totalActivePrepItems === 2) return '#1E40AF';
-    return '#64748B';
+    const norm = slice && typeof slice.normalizedLoad === 'number' ? slice.normalizedLoad : 0;
+    const bg = DateMath.getRainbowHeatColor(norm);
+    return `background:${bg};color:#FFFFFF;text-shadow:0 1px 1px rgba(0,0,0,0.35);`;
   }
 
   function renderMacroHeatmapPanel(weeklySlices, yearBounds, monthBounds, totalDays) {
-    let peakConcurrent = 0;
-    let collisionWeeks = 0;
+    let peakScore = 0;
     for (let i = 0; i < weeklySlices.length; i++) {
       const s = weeklySlices[i];
-      if (s.totalActivePrepItems > peakConcurrent) {
-        peakConcurrent = s.totalActivePrepItems;
-      }
-      if (s.activeDomainsCount >= 2) {
-        collisionWeeks++;
+      if ((s.loadScore || 0) > peakScore) {
+        peakScore = s.loadScore;
       }
     }
-    const maxScale = Math.max(4, peakConcurrent);
 
     const slicesHtml = weeklySlices
       .map(function (wk) {
         const topPct = (wk.startDay / totalDays) * 100;
         const heightPct = Math.max(0.35, ((wk.endDay - wk.startDay) / totalDays) * 100);
-        const rowBg = getMacroHeatmapCellBg(wk);
-        const barColor = getMacroHeatmapBarColor(wk);
-        const barWidthPct =
-          wk.totalActivePrepItems === 0
-            ? 0
-            : Math.min(100, Math.round((wk.totalActivePrepItems / maxScale) * 100));
-
-        const acadAlpha =
-          wk.academicCount > 0 ? Math.min(0.95, 0.35 + wk.academicCount * 0.25) : 0;
-        const clinAlpha =
-          wk.clinicalCount > 0 ? Math.min(0.95, 0.35 + wk.clinicalCount * 0.25) : 0;
-        const resAlpha =
-          wk.researchCount > 0 ? Math.min(0.95, 0.35 + wk.researchCount * 0.25) : 0;
-
-        const yearBg = wk.programmeYear % 2 === 1 ? '#F1F5F9' : '#F8FAFC';
+        const heatColor = DateMath.getRainbowHeatColor(wk.normalizedLoad || 0);
+        const pctOfPeak = Math.round((wk.normalizedLoad || 0) * 100);
 
         const tooltipParts = [
-          `Y${wk.programmeYear} W${wk.yearWeekNumber} (${wk.startIso} to ${wk.endIso})`,
-          `Active Prep Load: ${wk.totalActivePrepItems} item(s) [A:${wk.academicCount} C:${wk.clinicalCount} R:${wk.researchCount}]`,
+          `Y${wk.programmeYear} W${wk.yearWeekNumber} (${DateMath.formatAcademicDate(
+            wk.startIso,
+            state.programmeStartYear,
+            false
+          )} to ${DateMath.formatAcademicDate(
+            wk.endIso,
+            state.programmeStartYear,
+            false
+          )})`,
+          `Weekly Load: ${(wk.loadScore || 0).toFixed(2)} (${pctOfPeak}% of peak) · ${wk.totalActivePrepItems} active window(s)`,
         ];
         if (wk.activeTitles && wk.activeTitles.length > 0) {
           tooltipParts.push(
             wk.activeTitles
               .map(function (t) {
-                return '• ' + t.title;
+                const wVal = typeof t.sampledLoad === 'number' ? ` (${t.sampledLoad.toFixed(2)})` : '';
+                return '• ' + t.title + wVal;
               })
               .join(' | ')
           );
@@ -746,29 +485,9 @@
           <div
             class="macro-week-slice"
             data-start-day="${wk.startDay}"
-            style="top:${topPct.toFixed(3)}%;height:${heightPct.toFixed(3)}%;background:${rowBg};"
+            style="top:${topPct.toFixed(4)}%;height:calc(${heightPct.toFixed(4)}% + 0.5px);background:${heatColor};"
             title="${escapeHtml(tooltipParts.join(' — '))}"
-          >
-            <div class="macro-year-gutter" style="background:${yearBg};"></div>
-            <div class="macro-domain-tracks">
-              <div class="macro-domain-cell" style="background:${
-                acadAlpha > 0 ? `rgba(30, 64, 175, ${acadAlpha})` : 'transparent'
-              };"></div>
-              <div class="macro-domain-cell" style="background:${
-                clinAlpha > 0 ? `rgba(15, 118, 110, ${clinAlpha})` : 'transparent'
-              };"></div>
-              <div class="macro-domain-cell" style="background:${
-                resAlpha > 0 ? `rgba(153, 27, 27, ${resAlpha})` : 'transparent'
-              };"></div>
-            </div>
-            <div class="macro-intensity-track">
-              ${
-                barWidthPct > 0
-                  ? `<div class="macro-intensity-bar" style="width:${barWidthPct}%;background:${barColor};"></div>`
-                  : ''
-              }
-            </div>
-          </div>
+          ></div>
         `;
       })
       .join('');
@@ -778,7 +497,7 @@
         const topPct = (yb.startDay / totalDays) * 100;
         return `
           <div class="macro-year-divider" style="top:${topPct.toFixed(3)}%;"></div>
-          <div class="macro-year-tag" style="top:calc(${topPct.toFixed(3)}% + 2px);">Y${yb.programmeYear}</div>
+          <div class="macro-year-tag" style="top:calc(${topPct.toFixed(3)}% + 3px);">Y${yb.programmeYear}</div>
         `;
       })
       .join('');
@@ -798,15 +517,15 @@
       .join('');
 
     return `
-      <aside class="macro-heatmap-panel" aria-label="3-Year Compressed Workload Overview">
+      <aside class="macro-heatmap-panel" aria-label="3-Year Overall Workload Heatbar">
         <div class="macro-panel-header">
           <div class="macro-panel-title">
-            <span>3-Yr Load Map</span>
-            <span class="mono-tag">161W</span>
+            <span>Overall Load Map</span>
+            <span class="mono-tag">1W</span>
           </div>
           <div class="macro-panel-sub">
-            <span>Y · A C R · HEAT</span>
-            <span>PEAK:${peakConcurrent} · COL:${collisionWeeks}w</span>
+            <span>PRE &amp; POST WORKLOAD</span>
+            <span>PEAK:${peakScore.toFixed(1)}</span>
           </div>
         </div>
 
@@ -818,17 +537,12 @@
         </div>
 
         <div class="macro-panel-legend">
-          <div class="macro-legend-row">
-            <span>INTENSITY</span>
-            <div class="macro-legend-swatches">
-              <span class="macro-swatch" style="background:#F8FAFC;" title="0 active prep"></span>
-              <span class="macro-swatch" style="background:#64748B;" title="1 active prep"></span>
-              <span class="macro-swatch" style="background:#1E40AF;" title="2 active preps"></span>
-              <span class="macro-swatch" style="background:#D97706;" title="2-domain collision / 3+ preps"></span>
-              <span class="macro-swatch" style="background:#991B1B;" title="3-domain collision"></span>
-            </div>
+          <div class="macro-legend-scale">
+            <span class="macro-scale-end">LOW</span>
+            <div class="macro-rainbow-bar" title="Blue = Lowest workload, Red = Highest workload (1-week granularity)"></div>
+            <span class="macro-scale-end">HIGH</span>
           </div>
-          <div class="macro-legend-row" style="color:var(--text-muted);">
+          <div class="macro-legend-row" style="color:var(--text-muted);justify-content:center;">
             <span>CLICK / DRAG TO NAVIGATE</span>
           </div>
         </div>
@@ -882,7 +596,11 @@
 
     const yearBounds = DateMath.generateYearBoundaries(startYear);
     const monthBounds = DateMath.generateMonthBoundaries(startYear);
-    const weeklySlices = DateMath.computeWeeklyLoadSlices(state.deadlines, startYear);
+    const weeklySlices = DateMath.computeWeeklyLoadSlices(
+      state.deadlines,
+      startYear,
+      state.clinicalPlacements
+    );
 
     const academicItems = state.deadlines.filter(function (d) {
       return d.domain === 'academic';
@@ -905,7 +623,8 @@
         clinicalItems,
         startYear,
         pxPerDay,
-        state.splitOverlappingLanes
+        state.splitOverlappingLanes,
+        state.clinicalPlacements
       ),
       research: DateMath.layoutColumnDeadlines(
         researchItems,
@@ -941,8 +660,6 @@
                   <span class="mono-tag">01 SEP ${startYear} &rarr; 30 SEP ${startYear + 3}</span>
                   <span>&bull;</span>
                   <span>${totalDays.toLocaleString()} Days / ${weeklySlices.length} Weeks</span>
-                  <span>&bull;</span>
-                  <span>Vertical Coordinate Axis</span>
                 </div>
               </div>
             </div>
@@ -967,14 +684,6 @@
                 </div>
               </div>
 
-              <div class="control-pill" title="CSS linear-gradient opacity curve for preparation tails">
-                <label>Gradient</label>
-                <div class="segmented-group">
-                  <button type="button" class="seg-btn ${state.gradientCurve === 'linear' ? 'active' : ''}" data-action="set-curve" data-curve="linear">Lin</button>
-                  <button type="button" class="seg-btn ${state.gradientCurve === 'exponential' ? 'active' : ''}" data-action="set-curve" data-curve="exponential">Exp</button>
-                </div>
-              </div>
-
               <div class="control-pill" title="Sub-column lane splitting for overlapping deadlines within the same domain">
                 <label>Lanes</label>
                 <div class="segmented-group">
@@ -994,13 +703,28 @@
                 type="button"
                 class="btn"
                 data-action="commit-save-state"
-                style="background:#F0FDFA;color:#0F766E;border-color:#99F6E4;"
-                title="All edits auto-save to browser storage; click to manually commit &amp; verify timestamp"
+                style="${
+                  state.serverConnected
+                    ? 'background:#F0FDFA;color:#0F766E;border-color:#99F6E4;'
+                    : 'background:#F8FAFC;color:#475569;border-color:#CBD5E1;'
+                }"
+                title="${
+                  state.serverConnected
+                    ? `Connected to shared LAN SQLite Database (Rev #${state.serverRevision}, ${state.connectedClients} active LAN browser${state.connectedClients === 1 ? '' : 's'}). Click to force sync.`
+                    : 'Offline / Local Browser Storage mode. Start server.cjs to share across LAN.'
+                }"
               >
-                &#10003; ${state.lastSavedAt ? 'Saved ' + state.lastSavedAt : 'Commit / Save'}
+                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${
+                  state.serverConnected ? '#0F766E' : '#94A3B8'
+                };"></span>
+                ${
+                  state.serverConnected
+                    ? `LAN SQLite${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''} (${state.connectedClients} online)`
+                    : `Local Cache${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''}`
+                }
               </button>
 
-              <button type="button" class="btn btn-danger-outline" data-action="clear-all-state" title="Reset to default dataset">
+              <button type="button" class="btn btn-danger-outline" data-action="clear-all-state" title="Reset shared database to default dataset">
                 Reset
               </button>
             </div>
@@ -1011,8 +735,8 @@
 
         <div class="workspace-body">
           <div id="timeline-viewport" class="timeline-viewport">
-            <div class="timeline-minwidth">
-              <div class="sticky-column-headers">
+            <div class="timeline-minwidth" style="${buildTimelineMinWidthCss()}">
+              <div class="sticky-column-headers" style="grid-template-columns:${buildGridTemplateColumnsCss()};">
                 <div class="axis-header-cell">
                   <div class="axis-header-top">
                     <span>Time Axis</span>
@@ -1032,8 +756,11 @@
                       domKey === 'clinical' && state.clinicalPlacements.length > 0
                         ? `<span class="mono-tag" style="background:#F0FDFA;color:#0F766E;border:1px solid #99F6E4;padding:1px 5px;border-radius:2px;">${state.clinicalPlacements.length} locked placements</span>`
                         : '';
+                    const isResizingCol =
+                      state.colResizeOp && state.colResizeOp.colKey === domKey;
+                    const customWidth = state.columnWidths[domKey];
                     return `
-                      <div class="domain-header-cell">
+                      <div class="domain-header-cell" data-col-header="${domKey}">
                         <div class="domain-header-top">
                           <div class="domain-title-wrap">
                             <span class="domain-swatch" style="background:${cfg.hex};"></span>
@@ -1048,12 +775,17 @@
                           </div>
                         </div>
                         <div class="domain-header-sub">${cfg.subtitle}</div>
+                        <div
+                          class="col-resize-handle ${isResizingCol ? 'is-resizing' : ''}"
+                          data-col-resize="${domKey}"
+                          title="Drag horizontally to resize ${cfg.label} column${customWidth ? ' (' + customWidth + 'px)' : ''} — Double-click to reset column widths"
+                        ></div>
                       </div>
                     `;
                   })
                   .join('')}
 
-                <div class="domain-header-cell" style="background:#F8FAFC;">
+                <div class="domain-header-cell" data-col-header="terms" style="background:#F8FAFC;">
                   <div class="domain-header-top">
                     <div class="domain-title-wrap">
                       <span class="domain-swatch" style="background:#334155;"></span>
@@ -1065,10 +797,15 @@
                     </span>
                   </div>
                   <div class="domain-header-sub">Terms 1–3, Reading Weeks &amp; Vacations</div>
+                  <div
+                    class="col-resize-handle ${state.colResizeOp && state.colResizeOp.colKey === 'terms' ? 'is-resizing' : ''}"
+                    data-col-resize="terms"
+                    title="Drag horizontally to resize UCL Term Dates column${state.columnWidths.terms ? ' (' + state.columnWidths.terms + 'px)' : ''} — Double-click to reset column widths"
+                  ></div>
                 </div>
               </div>
 
-              <div class="timeline-body-grid" style="height:${totalHeightPx}px;">
+              <div class="timeline-body-grid" style="height:${totalHeightPx}px;grid-template-columns:${buildGridTemplateColumnsCss()};">
                 <div class="axis-gutter" style="height:${totalHeightPx}px;">
                   ${yearBounds
                     .map(function (yb, idx) {
@@ -1103,13 +840,29 @@
                       const heightPx = (wk.endDay - wk.startDay) * pxPerDay;
                       const showLabel = pxPerDay >= 3.5 || wk.yearWeekNumber % 2 === 1;
                       const bgHeat = getHeatStripColor(wk);
+                      const pctOfPeak = Math.round((wk.normalizedLoad || 0) * 100);
                       const tooltipLines = [
-                        `Year ${wk.programmeYear}, Week ${wk.yearWeekNumber} (${wk.startIso} to ${wk.endIso})`,
-                        `Active Prep Windows: ${wk.totalActivePrepItems} (${wk.activeDomainsCount} domain${wk.activeDomainsCount === 1 ? '' : 's'})`,
+                        `Year ${wk.programmeYear}, Week ${wk.yearWeekNumber} (${DateMath.formatAcademicDate(
+                          wk.startIso,
+                          startYear,
+                          false
+                        )} to ${DateMath.formatAcademicDate(
+                          wk.endIso,
+                          startYear,
+                          false
+                        )})`,
+                        `Sampled Weekly Load: ${(wk.loadScore || 0).toFixed(2)} (${pctOfPeak}% of peak) · ${wk.totalActivePrepItems} active window(s)`,
                       ];
                       if (wk.activeTitles && wk.activeTitles.length > 0) {
                         wk.activeTitles.forEach(function (t) {
-                          tooltipLines.push(`• [${t.domain.toUpperCase()}] ${t.title} (due ${t.dueDate})`);
+                          const wVal = typeof t.sampledLoad === 'number' ? ` [load: ${t.sampledLoad.toFixed(2)}]` : '';
+                          tooltipLines.push(
+                            `• [${t.domain.toUpperCase()}] ${t.title}${wVal} (${DateMath.formatAcademicDate(
+                              t.dueDate,
+                              startYear,
+                              false
+                            )})`
+                          );
                         });
                       }
                       return `
@@ -1194,12 +947,17 @@
                             return renderDeadlineComposite(entry, cfg, startYear);
                           })
                           .join('')}
+                        <div
+                          class="col-resize-handle"
+                          data-col-resize="${domKey}"
+                          title="Drag horizontally to resize ${cfg.label} column — Double-click to reset column widths"
+                        ></div>
                       </div>
                     `;
                   })
                   .join('')}
 
-                <div class="timeline-column term-column" style="height:${totalHeightPx}px;">
+                <div class="timeline-column term-column" data-domain-column="terms" style="height:${totalHeightPx}px;">
                   ${
                     sortedTerms.length === 0
                       ? `
@@ -1215,6 +973,11 @@
                       return renderTermBlock(term, startYear, pxPerDay);
                     })
                     .join('')}
+                  <div
+                    class="col-resize-handle"
+                    data-col-resize="terms"
+                    title="Drag horizontally to resize UCL Term Dates column — Double-click to reset column widths"
+                  ></div>
                 </div>
               </div>
             </div>
@@ -1238,7 +1001,7 @@
           <div class="legend-inline">
             <span class="legend-item">
               <span class="legend-box" style="background:linear-gradient(to bottom, rgba(30,64,175,0.05), rgba(30,64,175,0.75));"></span>
-              Prep Tail (&uarr; resize top edge)
+              Pre/Post Workload (&uarr; top / &darr; bottom edge)
             </span>
             <span class="legend-item">
               <span class="legend-box" style="background:#1E293B;"></span>
@@ -1279,9 +1042,9 @@
               <div class="field-group">
                 <label>Domain</label>
                 <select name="domain" class="field-input">
-                  <option value="academic" ${state.formDeadlineDomain === 'academic' ? 'selected' : ''}>Academic (#1E40AF)</option>
-                  <option value="clinical" ${state.formDeadlineDomain === 'clinical' ? 'selected' : ''}>Clinical (#0F766E)</option>
-                  <option value="research" ${state.formDeadlineDomain === 'research' ? 'selected' : ''}>Research (#991B1B)</option>
+                  <option value="academic" ${state.formDeadlineDomain === 'academic' ? 'selected' : ''}>Academic</option>
+                  <option value="clinical" ${state.formDeadlineDomain === 'clinical' ? 'selected' : ''}>Clinical</option>
+                  <option value="research" ${state.formDeadlineDomain === 'research' ? 'selected' : ''}>Research</option>
                 </select>
               </div>
               <div class="field-group">
@@ -1289,14 +1052,31 @@
                 <input type="date" name="dueDate" class="field-input mono-tag" value="${escapeHtml(state.formDeadlineDueDate)}" required />
               </div>
               <div class="field-group">
-                <label>Prep Window</label>
+                <label>Pre-Deadline Prep</label>
                 <div class="prep-compound">
-                  <input type="number" name="prepValue" class="field-input" min="1" max="365" value="${state.formDeadlinePrepValue}" required />
+                  <input type="number" name="prepValue" class="field-input" min="0" max="365" value="${state.formDeadlinePrepValue}" required />
                   <select name="prepUnit" class="field-input">
                     <option value="days" ${state.formDeadlinePrepUnit === 'days' ? 'selected' : ''}>days</option>
                     <option value="weeks" ${state.formDeadlinePrepUnit === 'weeks' ? 'selected' : ''}>wks</option>
                   </select>
                 </div>
+              </div>
+              <div class="field-group">
+                <label>Post-Deadline Load</label>
+                <div class="prep-compound">
+                  <input type="number" name="postValue" class="field-input" min="0" max="365" value="${state.formDeadlinePostValue}" required />
+                  <select name="postUnit" class="field-input">
+                    <option value="days" ${state.formDeadlinePostUnit === 'days' ? 'selected' : ''}>days</option>
+                    <option value="weeks" ${state.formDeadlinePostUnit === 'weeks' ? 'selected' : ''}>wks</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field-group">
+                <label>Workload Curve</label>
+                <select name="workloadCurve" class="field-input">
+                  <option value="exponential" ${state.formDeadlineCurve !== 'linear' ? 'selected' : ''}>Exponential</option>
+                  <option value="linear" ${state.formDeadlineCurve === 'linear' ? 'selected' : ''}>Linear</option>
+                </select>
               </div>
               <div class="field-group">
                 <label>Notes (Optional)</label>
@@ -1334,6 +1114,15 @@
 
   function renderDeadlineComposite(entry, cfg, startYear) {
     const item = entry.item;
+    const prepDays = Math.max(
+      0,
+      item.prepDurationDays !== undefined ? Number(item.prepDurationDays) : 14
+    );
+    const postDays = Math.max(0, Number(item.postDurationDays) || 0);
+    const itemCurve = item.workloadCurve === 'linear' ? 'linear' : 'exponential';
+    const curveShortLabel = itemCurve === 'linear' ? 'Lin' : 'Exp';
+    const nextCurveLabel = itemCurve === 'linear' ? 'Exponential' : 'Linear';
+
     const laneWidthPct = 100 / entry.totalLanes;
     const leftPct = entry.laneIndex * laneWidthPct;
     const widthCalc =
@@ -1344,18 +1133,33 @@
       entry.totalLanes > 1 ? `calc(${leftPct}% + 4px)` : '7px';
 
     const prepStartIso = DateMath.dayOffsetToDate(entry.prepStartDay, startYear);
-    const gradientCss = DateMath.buildPreparationGradient(
+    const postEndIso = DateMath.dayOffsetToDate(entry.postEndDay, startYear);
+    const prepGradientCss = DateMath.buildPreparationGradient(
       cfg.rgb,
-      state.gradientCurve
+      itemCurve
+    );
+    const postGradientCss = DateMath.buildPostGradient(
+      cfg.rgb,
+      itemCurve
     );
 
     const isDragging =
       state.dragOp && state.dragOp.deadlineId === item.id;
 
-    const weeksExact =
-      item.prepDurationDays % 7 === 0
-        ? `${item.prepDurationDays / 7}w (${item.prepDurationDays}d)`
-        : `${item.prepDurationDays}d`;
+    const prepWeeksExact =
+      prepDays > 0 && prepDays % 7 === 0
+        ? `${prepDays / 7}w (${prepDays}d)`
+        : `${prepDays}d`;
+
+    const postWeeksExact =
+      postDays > 0 && postDays % 7 === 0
+        ? `${postDays / 7}w (${postDays}d)`
+        : `${postDays}d`;
+
+    const loadSummaryParts = [];
+    if (prepDays > 0) loadSummaryParts.push(`${prepDays}d pre`);
+    if (postDays > 0) loadSummaryParts.push(`${postDays}d post`);
+    if (loadSummaryParts.length === 0) loadSummaryParts.push('0d load');
 
     return `
       <div
@@ -1364,23 +1168,29 @@
         style="top:${entry.yStart}px;left:${leftCalc};width:${widthCalc};"
       >
         <div
-          class="prep-tail"
+          class="prep-tail ${prepDays === 0 ? 'zero-height' : ''}"
           data-drag-role="shift-due"
           data-deadline-id="${escapeHtml(item.id)}"
           style="
             height:${entry.heightPx}px;
-            background:${gradientCss};
-            border-left-color:${cfg.hex};
-            border-right-color:rgba(${cfg.rgb}, 0.28);
-            border-top-color:rgba(${cfg.rgb}, 0.55);
+            ${
+              prepDays > 0
+                ? `
+                  background:${prepGradientCss};
+                  border-left-color:${cfg.hex};
+                  border-right-color:rgba(${cfg.rgb}, 0.28);
+                  border-top-color:rgba(${cfg.rgb}, 0.55);
+                `
+                : ''
+            }
           "
-          title="${escapeHtml(item.title)} — Drag vertically to shift due date, or drag top edge to resize preparation window"
+          title="${escapeHtml(item.title)} — Drag vertically to shift due date, or drag top edge to resize pre-deadline preparation window"
         >
           <div
             class="prep-resize-handle"
             data-drag-role="resize-prep"
             data-deadline-id="${escapeHtml(item.id)}"
-            title="Drag top edge vertically to lengthen or shorten preparation window (${item.prepDurationDays} days)"
+            title="Drag top edge vertically to lengthen or shorten pre-deadline preparation window (${prepDays} days)"
           >
             <span class="prep-resize-grip" style="background:${cfg.hex};"></span>
             ${
@@ -1389,7 +1199,7 @@
                     prepStartIso,
                     startYear,
                     false
-                  )} (${weeksExact})</span>`
+                  )} (${prepWeeksExact})</span>`
                 : ''
             }
           </div>
@@ -1432,8 +1242,19 @@
               startYear,
               true
             )}</span>
-            <span class="anchor-prep-tag" style="background:${cfg.badgeBg};color:${cfg.badgeText};">
-              ${item.prepDurationDays}d prep
+            <span style="display:inline-flex;align-items:center;gap:3px;">
+              <span class="anchor-prep-tag" style="background:${cfg.badgeBg};color:${cfg.badgeText};">
+                ${loadSummaryParts.join(' · ')}
+              </span>
+              <button
+                type="button"
+                class="anchor-curve-btn"
+                data-action="toggle-deadline-curve"
+                data-deadline-id="${escapeHtml(item.id)}"
+                title="Workload curve: ${itemCurve === 'linear' ? 'Linear' : 'Exponential'} — Click to switch to ${nextCurveLabel}"
+              >
+                ${curveShortLabel}
+              </button>
             </span>
           </div>
           ${
@@ -1443,40 +1264,228 @@
                 )}</div>`
               : ''
           }
+          ${
+            postDays === 0
+              ? `
+                <div
+                  class="post-resize-handle zero-post"
+                  data-drag-role="resize-post"
+                  data-deadline-id="${escapeHtml(item.id)}"
+                  title="Drag downward to add post-deadline workload window (currently 0 days)"
+                >
+                  <span class="prep-resize-grip" style="background:${cfg.hex};"></span>
+                  <span class="prep-start-pill">+ Post load</span>
+                </div>
+              `
+              : ''
+          }
         </div>
+
+        ${
+          postDays > 0
+            ? `
+              <div
+                class="post-tail"
+                data-drag-role="shift-due"
+                data-deadline-id="${escapeHtml(item.id)}"
+                style="
+                  height:${entry.postHeightPx}px;
+                  background:${postGradientCss};
+                  border-left-color:${cfg.hex};
+                  border-right-color:rgba(${cfg.rgb}, 0.28);
+                  border-bottom-color:rgba(${cfg.rgb}, 0.55);
+                "
+                title="${escapeHtml(item.title)} — Post-deadline workload (${postDays} days until ${postEndIso}). Drag bottom edge to resize."
+              >
+                <div
+                  class="post-resize-handle"
+                  data-drag-role="resize-post"
+                  data-deadline-id="${escapeHtml(item.id)}"
+                  title="Drag bottom edge vertically to lengthen or shorten post-deadline workload window (${postDays} days)"
+                >
+                  <span class="prep-resize-grip" style="background:${cfg.hex};"></span>
+                  ${
+                    entry.postHeightPx >= 26
+                      ? `<span class="prep-start-pill">Post &rarr; ${DateMath.formatAcademicDate(
+                          postEndIso,
+                          startYear,
+                          false
+                        )} (+${postWeeksExact})</span>`
+                      : ''
+                  }
+                </div>
+              </div>
+            `
+            : ''
+        }
       </div>
     `;
   }
 
   function renderClinicalPlacementBlocks(placements, startYear, pxPerDay) {
     if (!Array.isArray(placements) || placements.length === 0) return '';
+    const cfg = DateMath.DOMAIN_CONFIG.clinical;
+
     return placements
       .map(function (pl) {
+        const plCurve =
+          pl.workloadCurve === 'linear' ? 'linear' : 'exponential';
+        const curveShortLabel = plCurve === 'linear' ? 'Lin' : 'Exp';
+        const nextCurveLabel = plCurve === 'linear' ? 'Exponential' : 'Linear';
+        const startPostGradient = DateMath.buildPostGradient(cfg.rgb, plCurve);
+        const endPrepGradient = DateMath.buildPreparationGradient(
+          cfg.rgb,
+          plCurve
+        );
+
         const startDay = DateMath.dateToDayOffset(pl.startDate, startYear);
-        const endDay = DateMath.dateToDayOffset(pl.endDate, startYear) + 1;
+        const endDayOffset = DateMath.dateToDayOffset(pl.endDate, startYear);
+        const endDay = endDayOffset + 1;
         const topPx = startDay * pxPerDay;
         const heightPx = Math.max(22, (endDay - startDay) * pxPerDay);
         const durationDays = Math.max(1, endDay - startDay);
         const durationWeeks = Math.round(durationDays / 7);
 
+        const startLoadDays = Math.max(
+          0,
+          pl.startLoadDays !== undefined ? Number(pl.startLoadDays) : 14
+        );
+        const endLoadDays = Math.max(
+          0,
+          pl.endLoadDays !== undefined ? Number(pl.endLoadDays) : 14
+        );
+
+        const startLoadHeightPx =
+          startLoadDays > 0 ? Math.max(4, startLoadDays * pxPerDay) : 0;
+        const endLoadHeightPx =
+          endLoadDays > 0 ? Math.max(4, endLoadDays * pxPerDay) : 0;
+
+        const startLoadEndIso = DateMath.dayOffsetToDate(
+          startDay + startLoadDays,
+          startYear
+        );
+        const endLoadStartIso = DateMath.dayOffsetToDate(
+          endDayOffset - endLoadDays,
+          startYear
+        );
+
+        const startLoadExact =
+          startLoadDays > 0 && startLoadDays % 7 === 0
+            ? `${startLoadDays / 7}w (${startLoadDays}d)`
+            : `${startLoadDays}d`;
+        const endLoadExact =
+          endLoadDays > 0 && endLoadDays % 7 === 0
+            ? `${endLoadDays / 7}w (${endLoadDays}d)`
+            : `${endLoadDays}d`;
+
+        const isDragging =
+          state.dragOp && state.dragOp.placementId === pl.id;
+
         return `
           <div
-            class="clinical-placement-block"
+            class="clinical-placement-block ${isDragging ? 'is-dragging' : ''}"
+            data-placement-id="${escapeHtml(pl.id)}"
             style="top:${topPx}px;height:${heightPx}px;"
-            title="${escapeHtml(pl.name)}: ${pl.startDate} to ${pl.endDate} (${durationDays} days / ~${durationWeeks} weeks) — Immovable Clinical Placement"
+            title="${escapeHtml(pl.name)}: ${DateMath.formatAcademicDate(pl.startDate, startYear, false)} to ${DateMath.formatAcademicDate(pl.endDate, startYear, false)} (${durationDays} days / ~${durationWeeks} weeks) — Post-start load: ${startLoadDays}d, Pre-end load: ${endLoadDays}d (${plCurve})"
           >
-            <div>
-              <div class="clinical-placement-header">
-                <span class="clinical-placement-title">${escapeHtml(pl.name)}</span>
-                <span class="clinical-placement-lock">IMMOVABLE PLACEMENT</span>
-              </div>
-              <div class="clinical-placement-dates">
-                ${DateMath.formatAcademicDate(pl.startDate, startYear, false)} &rarr; ${DateMath.formatAcademicDate(pl.endDate, startYear, false)}
+            <div
+              class="placement-workload-start ${startLoadDays === 0 ? 'zero-load' : ''}"
+              style="
+                height:${startLoadHeightPx}px;
+                ${startLoadDays > 0 ? `background:${startPostGradient};` : ''}
+              "
+            >
+              <div
+                class="placement-start-resize-handle"
+                data-drag-role="resize-placement-start"
+                data-placement-id="${escapeHtml(pl.id)}"
+                style="${startLoadDays === 0 ? 'top:44px;bottom:auto;' : ''}"
+                title="Drag vertically to resize workload following placement start date (${startLoadDays} days until ${DateMath.formatAcademicDate(startLoadEndIso, startYear, false)})"
+              >
+                <span class="prep-resize-grip" style="background:${cfg.hex};"></span>
+                <span class="prep-start-pill">
+                  ${
+                    startLoadDays > 0
+                      ? `Start Load &rarr; ${DateMath.formatAcademicDate(
+                          startLoadEndIso,
+                          startYear,
+                          false
+                        )} (+${startLoadExact})`
+                      : '+ Start load'
+                  }
+                </span>
               </div>
             </div>
+
+            <div
+              class="placement-workload-end ${endLoadDays === 0 ? 'zero-load' : ''}"
+              style="
+                height:${endLoadHeightPx}px;
+                ${endLoadDays > 0 ? `background:${endPrepGradient};` : ''}
+              "
+            >
+              <div
+                class="placement-end-resize-handle"
+                data-drag-role="resize-placement-end"
+                data-placement-id="${escapeHtml(pl.id)}"
+                style="${endLoadDays === 0 ? 'bottom:24px;top:auto;' : ''}"
+                title="Drag vertically to resize workload preceding placement end date (${endLoadDays} days from ${DateMath.formatAcademicDate(endLoadStartIso, startYear, false)})"
+              >
+                <span class="prep-resize-grip" style="background:${cfg.hex};"></span>
+                <span class="prep-start-pill">
+                  ${
+                    endLoadDays > 0
+                      ? `End Prep ${DateMath.formatAcademicDate(
+                          endLoadStartIso,
+                          startYear,
+                          false
+                        )} (${endLoadExact})`
+                      : '+ End load'
+                  }
+                </span>
+              </div>
+            </div>
+
+            <div class="clinical-placement-top-wrap">
+              <div class="clinical-placement-header">
+                <span class="clinical-placement-title">${escapeHtml(pl.name)}</span>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <span class="clinical-placement-lock">IMMOVABLE PLACEMENT</span>
+                  <button
+                    type="button"
+                    class="anchor-edit-btn"
+                    data-action="open-edit-placement"
+                    data-placement-id="${escapeHtml(pl.id)}"
+                    title="Edit placement workload &amp; details"
+                  >
+                    &#9998;
+                  </button>
+                </div>
+              </div>
+              <div class="clinical-placement-meta-row">
+                <span class="clinical-placement-dates">
+                  ${DateMath.formatAcademicDate(pl.startDate, startYear, false)} &rarr; ${DateMath.formatAcademicDate(pl.endDate, startYear, false)}
+                </span>
+                <span style="display:inline-flex;align-items:center;gap:3px;pointer-events:auto;">
+                  <span class="anchor-prep-tag" style="background:${cfg.badgeBg};color:${cfg.badgeText};font-family:var(--font-mono);font-size:9px;border:1px solid rgba(15,118,110,0.2);">
+                    +${startLoadDays}d start &middot; ${endLoadDays}d end
+                  </span>
+                  <button
+                    type="button"
+                    class="anchor-curve-btn"
+                    data-action="toggle-placement-curve"
+                    data-placement-id="${escapeHtml(pl.id)}"
+                    title="Workload curve: ${plCurve === 'linear' ? 'Linear' : 'Exponential'} — Click to switch to ${nextCurveLabel}"
+                  >
+                    ${curveShortLabel}
+                  </button>
+                </span>
+              </div>
+            </div>
+
             ${
               heightPx >= 60
-                ? `<div class="clinical-placement-footer">${durationWeeks} wks (${durationDays}d) &bull; Continuous Clinical Placement</div>`
+                ? `<div class="clinical-placement-footer">${durationWeeks} wks (${durationDays}d) &bull; End ${DateMath.formatAcademicDate(pl.endDate, startYear, false)}</div>`
                 : ''
             }
           </div>
@@ -1502,7 +1511,7 @@
         data-action="open-edit-term"
         data-term-id="${escapeHtml(term.id)}"
         style="top:${topPx}px;height:${heightPx}px;z-index:${zIndex};${inlinePos}"
-        title="${escapeHtml(term.name)} (${term.startDate} to ${term.endDate}) — Click to edit or delete"
+        title="${escapeHtml(term.name)} (${DateMath.formatAcademicDate(term.startDate, startYear, false)} to ${DateMath.formatAcademicDate(term.endDate, startYear, false)}) — Click to edit or delete"
       >
         <div>
           <div class="term-block-header">
@@ -1535,27 +1544,91 @@
 
   function renderLiveDragHud() {
     if (!state.dragOp) return '';
+
+    if (state.dragOp.placementId) {
+      const pl = state.clinicalPlacements.find(function (item) {
+        return item.id === state.dragOp.placementId;
+      });
+      if (!pl) return '';
+      const startDay = DateMath.dateToDayOffset(
+        pl.startDate,
+        state.programmeStartYear
+      );
+      const endDay = DateMath.dateToDayOffset(
+        pl.endDate,
+        state.programmeStartYear
+      );
+      const startLoadDays = Math.max(
+        0,
+        pl.startLoadDays !== undefined ? Number(pl.startLoadDays) : 14
+      );
+      const endLoadDays = Math.max(
+        0,
+        pl.endLoadDays !== undefined ? Number(pl.endLoadDays) : 14
+      );
+      const startLoadEndIso = DateMath.dayOffsetToDate(
+        startDay + startLoadDays,
+        state.programmeStartYear
+      );
+      const endLoadStartIso = DateMath.dayOffsetToDate(
+        endDay - endLoadDays,
+        state.programmeStartYear
+      );
+      const modeLabel =
+        state.dragOp.mode === 'resize-placement-start'
+          ? 'Resizing Placement Start Workload'
+          : 'Resizing Placement End Workload';
+
+      return `
+        <div class="live-drag-hud">
+          <span style="color:#99F6E4;text-transform:uppercase;">
+            ${modeLabel}
+          </span>
+          <strong>${escapeHtml(pl.name)}</strong>
+          <span>Start Load: <strong>${DateMath.formatAcademicDate(pl.startDate, state.programmeStartYear, false)} &rarr; ${DateMath.formatAcademicDate(startLoadEndIso, state.programmeStartYear, false)} (+${startLoadDays}d)</strong></span>
+          <span>End Load: <strong>${DateMath.formatAcademicDate(endLoadStartIso, state.programmeStartYear, false)} &rarr; ${DateMath.formatAcademicDate(pl.endDate, state.programmeStartYear, false)} (${endLoadDays}d)</strong></span>
+        </div>
+      `;
+    }
+
     const d = state.deadlines.find(function (item) {
       return item.id === state.dragOp.deadlineId;
     });
     if (!d) return '';
 
+    const prepDays = Math.max(
+      0,
+      d.prepDurationDays !== undefined ? Number(d.prepDurationDays) : 14
+    );
+    const postDays = Math.max(0, Number(d.postDurationDays) || 0);
     const dueDay = DateMath.dateToDayOffset(d.dueDate, state.programmeStartYear);
-    const prepStartDay = dueDay - d.prepDurationDays;
+    const prepStartDay = dueDay - prepDays;
+    const postEndDay = dueDay + postDays;
     const prepStartIso = DateMath.dayOffsetToDate(
       prepStartDay,
       state.programmeStartYear
     );
+    const postEndIso = DateMath.dayOffsetToDate(
+      postEndDay,
+      state.programmeStartYear
+    );
+
+    const modeLabel =
+      state.dragOp.mode === 'shift-due'
+        ? 'Rescheduling Due Date'
+        : state.dragOp.mode === 'resize-post'
+        ? 'Resizing Post-Deadline Load'
+        : 'Resizing Pre-Deadline Prep';
 
     return `
       <div class="live-drag-hud">
         <span style="color:#94A3B8;text-transform:uppercase;">
-          ${state.dragOp.mode === 'shift-due' ? 'Rescheduling Due Date' : 'Resizing Prep Window'}
+          ${modeLabel}
         </span>
         <strong>${escapeHtml(d.title)}</strong>
-        <span>Prep Start: <strong>${prepStartIso}</strong></span>
-        <span>Due: <strong>${d.dueDate}</strong></span>
-        <span>Window: <strong>${d.prepDurationDays}d</strong></span>
+        <span>Prep: <strong>${DateMath.formatAcademicDate(prepStartIso, state.programmeStartYear, false)} (${prepDays}d)</strong></span>
+        <span>Due: <strong>${DateMath.formatAcademicDate(d.dueDate, state.programmeStartYear, false)}</strong></span>
+        <span>Post: <strong>${DateMath.formatAcademicDate(postEndIso, state.programmeStartYear, false)} (+${postDays}d)</strong></span>
       </div>
     `;
   }
@@ -1569,6 +1642,11 @@
         state.editingDeadlineId = null;
         return '';
       }
+      const prepVal =
+        item.prepDurationDays !== undefined ? Number(item.prepDurationDays) : 14;
+      const postVal = Number(item.postDurationDays) || 0;
+      const itemCurve =
+        item.workloadCurve === 'linear' ? 'linear' : 'exponential';
       return `
         <div class="modal-backdrop" data-action="close-edit-modal-backdrop">
           <div class="modal-card modal-sm">
@@ -1596,9 +1674,22 @@
                     <input type="date" name="dueDate" class="field-input mono-tag" value="${escapeHtml(item.dueDate)}" required />
                   </div>
                 </div>
-                <div class="field-group">
-                  <label>Preparation Duration (Days)</label>
-                  <input type="number" name="prepDurationDays" class="field-input mono-tag" min="1" max="365" value="${item.prepDurationDays}" required />
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                  <div class="field-group">
+                    <label>Pre-Deadline Prep (Days)</label>
+                    <input type="number" name="prepDurationDays" class="field-input mono-tag" min="0" max="365" value="${prepVal}" required />
+                  </div>
+                  <div class="field-group">
+                    <label>Post-Deadline Load (Days)</label>
+                    <input type="number" name="postDurationDays" class="field-input mono-tag" min="0" max="365" value="${postVal}" required />
+                  </div>
+                  <div class="field-group">
+                    <label>Workload Curve</label>
+                    <select name="workloadCurve" class="field-input">
+                      <option value="exponential" ${itemCurve === 'exponential' ? 'selected' : ''}>Exponential</option>
+                      <option value="linear" ${itemCurve === 'linear' ? 'selected' : ''}>Linear</option>
+                    </select>
+                  </div>
                 </div>
                 <div class="field-group">
                   <label>Notes</label>
@@ -1609,6 +1700,78 @@
                 <button type="button" class="btn btn-danger-outline" data-action="delete-deadline" data-deadline-id="${escapeHtml(item.id)}">
                   Delete Deadline
                 </button>
+                <div style="display:flex;gap:8px;">
+                  <button type="button" class="btn" data-action="close-edit-modal">Cancel</button>
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    if (state.editingPlacementId) {
+      const pl = state.clinicalPlacements.find(function (p) {
+        return p.id === state.editingPlacementId;
+      });
+      if (!pl) {
+        state.editingPlacementId = null;
+        return '';
+      }
+      const startLoadVal =
+        pl.startLoadDays !== undefined ? Number(pl.startLoadDays) : 14;
+      const endLoadVal =
+        pl.endLoadDays !== undefined ? Number(pl.endLoadDays) : 14;
+      const plCurve =
+        pl.workloadCurve === 'linear' ? 'linear' : 'exponential';
+      return `
+        <div class="modal-backdrop" data-action="close-edit-modal-backdrop">
+          <div class="modal-card modal-sm">
+            <div class="modal-header">
+              <span class="modal-title">Edit Clinical Placement Workloads</span>
+              <button type="button" class="btn" data-action="close-edit-modal">Close</button>
+            </div>
+            <form id="form-edit-placement">
+              <div class="modal-body">
+                <div class="field-group">
+                  <label>Placement Name</label>
+                  <input type="text" name="name" class="field-input" value="${escapeHtml(pl.name)}" required />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <div class="field-group">
+                    <label>Start Date</label>
+                    <input type="date" name="startDate" class="field-input mono-tag" value="${escapeHtml(pl.startDate)}" required />
+                  </div>
+                  <div class="field-group">
+                    <label>End Date</label>
+                    <input type="date" name="endDate" class="field-input mono-tag" value="${escapeHtml(pl.endDate)}" required />
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+                  <div class="field-group">
+                    <label>Post-Start Workload (Days)</label>
+                    <input type="number" name="startLoadDays" class="field-input mono-tag" min="0" max="365" value="${startLoadVal}" required />
+                  </div>
+                  <div class="field-group">
+                    <label>Pre-End Workload (Days)</label>
+                    <input type="number" name="endLoadDays" class="field-input mono-tag" min="0" max="365" value="${endLoadVal}" required />
+                  </div>
+                  <div class="field-group">
+                    <label>Workload Curve</label>
+                    <select name="workloadCurve" class="field-input">
+                      <option value="exponential" ${plCurve === 'exponential' ? 'selected' : ''}>Exponential</option>
+                      <option value="linear" ${plCurve === 'linear' ? 'selected' : ''}>Linear</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="field-group">
+                  <label>Notes</label>
+                  <input type="text" name="notes" class="field-input" value="${escapeHtml(pl.notes || '')}" />
+                </div>
+              </div>
+              <div class="modal-footer">
+                <span class="mono-tag">Clinical Column</span>
                 <div style="display:flex;gap:8px;">
                   <button type="button" class="btn" data-action="close-edit-modal">Cancel</button>
                   <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -1679,7 +1842,7 @@
           <div class="modal-header">
             <div>
               <div class="modal-title">Bulk Schedule Import &amp; Export (JSON / CSV)</div>
-              <div style="font-size:11px;color:#64748B;">Paste Academic, Clinical, and Research deadlines alongside UCL Term Dates, or export the sequenced schedule.</div>
+              <div style="font-size:11px;color:#64748B;">Paste Academic, Clinical, and Research deadlines alongside Clinical Placements and UCL Term Dates, or export the sequenced schedule.</div>
             </div>
             <button type="button" class="btn" data-action="close-bulk-modal">Close</button>
           </div>
@@ -1745,7 +1908,19 @@
       "domain": "academic | clinical | research",
       "dueDate": "YYYY-MM-DD",
       "prepDurationDays": 21,
+      "postDurationDays": 7,
+      "workloadCurve": "exponential | linear",
       "notes": "..."
+    }
+  ],
+  "clinicalPlacements": [
+    {
+      "name": "Placement 1 (Y1)",
+      "startDate": "YYYY-MM-DD",
+      "endDate": "YYYY-MM-DD",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential | linear"
     }
   ],
   "terms": [
@@ -1759,9 +1934,10 @@
                 </div>
                 <div>
                   <div style="font-weight:600;color:#475569;margin-bottom:3px;">2. Unified CSV Header</div>
-                  <pre class="schema-pre">type,title,domain,dueDate,prepDurationDays,startDate,endDate,notes
-deadline,"Essay 1",academic,YYYY-MM-DD,21,,,
-term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
+                  <pre class="schema-pre">type,title,domain,dueDate,prepDurationDays,postDurationDays,workloadCurve,startDate,endDate,notes
+deadline,"Essay 1",academic,YYYY-MM-DD,21,7,exponential,,,
+placement,"Placement 1",clinical,,14,14,exponential,YYYY-MM-DD,YYYY-MM-DD,
+term,"Year 1 - Term 1",,,,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
                 </div>
               </div>
             </div>
@@ -1796,15 +1972,36 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
     // Close modals on Escape key
     window.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
-        if (state.editingDeadlineId || state.editingTermId) {
+        if (
+          state.editingDeadlineId ||
+          state.editingTermId ||
+          state.editingPlacementId
+        ) {
           state.editingDeadlineId = null;
           state.editingTermId = null;
+          state.editingPlacementId = null;
           renderApp();
         } else if (state.isBulkModalOpen) {
           state.isBulkModalOpen = false;
           renderApp();
         }
       }
+    });
+
+    // Double-click column resize handle to reset column widths to auto (1fr)
+    root.addEventListener('dblclick', function (e) {
+      const colResizeHandle = e.target.closest('[data-col-resize]');
+      if (!colResizeHandle) return;
+      e.preventDefault();
+      e.stopPropagation();
+      state.columnWidths = {
+        academic: null,
+        clinical: null,
+        research: null,
+        terms: null,
+      };
+      saveLocalCacheState();
+      renderApp();
     });
 
     // Click delegation
@@ -1817,6 +2014,7 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
       ) {
         state.editingDeadlineId = null;
         state.editingTermId = null;
+        state.editingPlacementId = null;
         renderApp();
         return;
       }
@@ -1838,9 +2036,36 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
       if (action === 'set-snap') {
         state.snapIncrementDays = Number(target.getAttribute('data-snap')) || 1;
         renderApp();
-      } else if (action === 'set-curve') {
-        state.gradientCurve = target.getAttribute('data-curve') || 'linear';
-        renderApp();
+      } else if (action === 'toggle-deadline-curve') {
+        e.stopPropagation();
+        const dlId = target.getAttribute('data-deadline-id');
+        let updatedItem = null;
+        state.deadlines = state.deadlines.map(function (d) {
+          if (d.id !== dlId) return d;
+          const nextCurve =
+            d.workloadCurve === 'linear' ? 'exponential' : 'linear';
+          updatedItem = Object.assign({}, d, { workloadCurve: nextCurve });
+          return updatedItem;
+        });
+        if (updatedItem) {
+          syncSingleDeadlineToServer(updatedItem);
+          renderApp();
+        }
+      } else if (action === 'toggle-placement-curve') {
+        e.stopPropagation();
+        const plId = target.getAttribute('data-placement-id');
+        let updatedPl = null;
+        state.clinicalPlacements = state.clinicalPlacements.map(function (p) {
+          if (p.id !== plId) return p;
+          const nextCurve =
+            p.workloadCurve === 'linear' ? 'exponential' : 'linear';
+          updatedPl = Object.assign({}, p, { workloadCurve: nextCurve });
+          return updatedPl;
+        });
+        if (updatedPl) {
+          syncSinglePlacementToServer(updatedPl);
+          renderApp();
+        }
       } else if (action === 'toggle-lanes') {
         state.splitOverlappingLanes = !state.splitOverlappingLanes;
         renderApp();
@@ -1861,14 +2086,16 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         state.bulkTextValue = SchemaParser.serializeToJson(
           state.programmeStartYear,
           state.deadlines,
-          state.terms
+          state.terms,
+          state.clinicalPlacements
         );
         state.bulkFeedback = null;
         renderApp();
       } else if (action === 'load-current-csv') {
         state.bulkTextValue = SchemaParser.serializeToCsv(
           state.deadlines,
-          state.terms
+          state.terms,
+          state.clinicalPlacements
         );
         state.bulkFeedback = null;
         renderApp();
@@ -1876,7 +2103,8 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         const json = SchemaParser.serializeToJson(
           state.programmeStartYear,
           state.deadlines,
-          state.terms
+          state.terms,
+          state.clinicalPlacements
         );
         downloadFile(
           json,
@@ -1884,7 +2112,11 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
           'application/json'
         );
       } else if (action === 'download-csv') {
-        const csv = SchemaParser.serializeToCsv(state.deadlines, state.terms);
+        const csv = SchemaParser.serializeToCsv(
+          state.deadlines,
+          state.terms,
+          state.clinicalPlacements
+        );
         downloadFile(
           csv,
           `ucl-programme-schedule-${state.programmeStartYear}-${state.programmeStartYear + 3}.csv`,
@@ -1911,6 +2143,12 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         if (state.bulkModalMode === 'replace') {
           state.deadlines = result.deadlines;
           state.terms = result.terms;
+          if (
+            Array.isArray(result.clinicalPlacements) &&
+            result.clinicalPlacements.length > 0
+          ) {
+            state.clinicalPlacements = result.clinicalPlacements;
+          }
         } else {
           const dlMap = new Map();
           state.deadlines.forEach(function (d) {
@@ -1929,13 +2167,29 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
             termMap.set(t.id, t);
           });
           state.terms = Array.from(termMap.values());
+
+          if (
+            Array.isArray(result.clinicalPlacements) &&
+            result.clinicalPlacements.length > 0
+          ) {
+            const plMap = new Map();
+            state.clinicalPlacements.forEach(function (p) {
+              plMap.set(p.id, p);
+            });
+            result.clinicalPlacements.forEach(function (p) {
+              plMap.set(p.id, p);
+            });
+            state.clinicalPlacements = Array.from(plMap.values());
+          }
         }
 
         savePersistedState();
         state.bulkFeedback = {
           type: 'success',
           lines: [
-            `Imported ${result.deadlines.length} deadline(s) and ${result.terms.length} term block(s).`,
+            `Imported ${result.deadlines.length} deadline(s), ${
+              result.clinicalPlacements ? result.clinicalPlacements.length : 0
+            } placement(s), and ${result.terms.length} term block(s).`,
           ].concat(result.warnings),
         };
         renderApp();
@@ -1945,7 +2199,7 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
       } else if (action === 'clear-all-state') {
         if (
           window.confirm(
-            'Reset all modified deadlines and restore the default Academic, Clinical, and Research dataset?'
+            'Reset all modified deadlines and restore the default Academic, Clinical, and Research dataset for all LAN users?'
           )
         ) {
           state.deadlines = INITIAL_DEADLINES.slice();
@@ -1953,12 +2207,28 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
           state.clinicalPlacements = INITIAL_CLINICAL_PLACEMENTS.slice();
           state.deletedSeedIds = [];
           localStorage.removeItem(STORAGE_KEY);
-          savePersistedState();
+          if (state.serverConnected) {
+            apiRequest('POST', '/api/reset').then(function (resetState) {
+              if (resetState) {
+                applyServerState(resetState);
+                renderApp();
+              }
+            });
+          } else {
+            saveLocalCacheState();
+          }
           renderApp();
         }
       } else if (action === 'open-edit-deadline') {
         e.stopPropagation();
         state.editingDeadlineId = target.getAttribute('data-deadline-id');
+        state.editingTermId = null;
+        state.editingPlacementId = null;
+        renderApp();
+      } else if (action === 'open-edit-placement') {
+        e.stopPropagation();
+        state.editingPlacementId = target.getAttribute('data-placement-id');
+        state.editingDeadlineId = null;
         state.editingTermId = null;
         renderApp();
       } else if (action === 'quick-delete-deadline') {
@@ -1973,17 +2243,19 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         if (state.editingDeadlineId === id) {
           state.editingDeadlineId = null;
         }
-        savePersistedState();
+        syncDeleteDeadlineToServer(id);
         renderApp();
       } else if (action === 'open-edit-term') {
         e.stopPropagation();
         state.editingTermId = target.getAttribute('data-term-id');
         state.editingDeadlineId = null;
+        state.editingPlacementId = null;
         renderApp();
       } else if (action === 'close-edit-modal') {
         e.stopPropagation();
         state.editingDeadlineId = null;
         state.editingTermId = null;
+        state.editingPlacementId = null;
         renderApp();
       } else if (action === 'delete-deadline') {
         e.stopPropagation();
@@ -1996,7 +2268,7 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
           return d.id !== id;
         });
         state.editingDeadlineId = null;
-        savePersistedState();
+        syncDeleteDeadlineToServer(id);
         renderApp();
       } else if (action === 'delete-term') {
         e.stopPropagation();
@@ -2008,7 +2280,7 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
           return t.id !== id;
         });
         state.editingTermId = null;
-        savePersistedState();
+        syncDeleteTermToServer(id);
         renderApp();
       }
     });
@@ -2030,7 +2302,7 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         const val = Number(target.value);
         if (Number.isFinite(val) && val >= 2000 && val <= 2100) {
           state.programmeStartYear = Math.round(val);
-          savePersistedState();
+          syncSettingsToServer();
           renderApp();
         }
       } else if (target.id === 'bulk-file-input') {
@@ -2057,32 +2329,48 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         const title = String(fd.get('title') || '').trim();
         const domain = String(fd.get('domain') || 'academic');
         const dueDate = String(fd.get('dueDate') || '').trim();
-        const prepValue = Math.max(1, Number(fd.get('prepValue')) || 14);
+        const rawPrep = Number(fd.get('prepValue'));
+        const prepValue =
+          Number.isFinite(rawPrep) && rawPrep >= 0 ? Math.round(rawPrep) : 14;
         const prepUnit = String(fd.get('prepUnit') || 'days');
+        const rawPost = Number(fd.get('postValue'));
+        const postValue =
+          Number.isFinite(rawPost) && rawPost >= 0 ? Math.round(rawPost) : 0;
+        const postUnit = String(fd.get('postUnit') || 'days');
+        const workloadCurve =
+          fd.get('workloadCurve') === 'linear' ? 'linear' : 'exponential';
         const notes = String(fd.get('notes') || '').trim();
 
         if (!title || Number.isNaN(DateMath.parseIsoToUtcMs(dueDate))) return;
 
         const prepDurationDays =
           prepUnit === 'weeks' ? prepValue * 7 : prepValue;
+        const postDurationDays =
+          postUnit === 'weeks' ? postValue * 7 : postValue;
 
-        state.deadlines.push({
+        const newDeadline = {
           id: SchemaParser.generateId('dl'),
           title: title,
           domain: domain,
           dueDate: dueDate,
           prepDurationDays: prepDurationDays,
+          postDurationDays: postDurationDays,
+          workloadCurve: workloadCurve,
           notes: notes || undefined,
-        });
+        };
+        state.deadlines.push(newDeadline);
 
         state.formDeadlineTitle = '';
         state.formDeadlineDomain = domain;
         state.formDeadlineDueDate = dueDate;
         state.formDeadlinePrepValue = prepValue;
         state.formDeadlinePrepUnit = prepUnit;
+        state.formDeadlinePostValue = postValue;
+        state.formDeadlinePostUnit = postUnit;
+        state.formDeadlineCurve = workloadCurve;
         state.formDeadlineNotes = '';
 
-        savePersistedState();
+        syncSingleDeadlineToServer(newDeadline);
         renderApp();
       } else if (form.id === 'form-add-term') {
         const fd = new FormData(form);
@@ -2096,44 +2384,91 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
           return;
         }
 
-        state.terms.push({
+        const newTerm = {
           id: SchemaParser.generateId('term'),
           name: name,
           startDate: startDate,
           endDate: endDate,
-        });
+        };
+        state.terms.push(newTerm);
 
         state.formTermName = '';
         state.formTermStartDate = startDate;
         state.formTermEndDate = endDate;
 
-        savePersistedState();
+        syncSingleTermToServer(newTerm);
         renderApp();
       } else if (form.id === 'form-edit-deadline') {
         const fd = new FormData(form);
         const title = String(fd.get('title') || '').trim();
         const domain = String(fd.get('domain') || 'academic');
         const dueDate = String(fd.get('dueDate') || '').trim();
-        const prepDurationDays = Math.max(
-          1,
-          Math.round(Number(fd.get('prepDurationDays')) || 14)
-        );
+        const rawPrep = Number(fd.get('prepDurationDays'));
+        const prepDurationDays =
+          Number.isFinite(rawPrep) && rawPrep >= 0 ? Math.round(rawPrep) : 0;
+        const rawPost = Number(fd.get('postDurationDays'));
+        const postDurationDays =
+          Number.isFinite(rawPost) && rawPost >= 0 ? Math.round(rawPost) : 0;
+        const workloadCurve =
+          fd.get('workloadCurve') === 'linear' ? 'linear' : 'exponential';
         const notes = String(fd.get('notes') || '').trim();
 
+        let updatedDeadline = null;
         state.deadlines = state.deadlines.map(function (d) {
           if (d.id !== state.editingDeadlineId) return d;
-          return {
+          updatedDeadline = {
             id: d.id,
             title: title || d.title,
             domain: domain,
             dueDate: dueDate || d.dueDate,
             prepDurationDays: prepDurationDays,
+            postDurationDays: postDurationDays,
+            workloadCurve: workloadCurve,
             notes: notes || undefined,
           };
+          return updatedDeadline;
         });
 
         state.editingDeadlineId = null;
-        savePersistedState();
+        syncSingleDeadlineToServer(updatedDeadline);
+        renderApp();
+      } else if (form.id === 'form-edit-placement') {
+        const fd = new FormData(form);
+        const name = String(fd.get('name') || '').trim();
+        const startDate = String(fd.get('startDate') || '').trim();
+        const endDate = String(fd.get('endDate') || '').trim();
+        const rawStartLoad = Number(fd.get('startLoadDays'));
+        const startLoadDays =
+          Number.isFinite(rawStartLoad) && rawStartLoad >= 0
+            ? Math.round(rawStartLoad)
+            : 0;
+        const rawEndLoad = Number(fd.get('endLoadDays'));
+        const endLoadDays =
+          Number.isFinite(rawEndLoad) && rawEndLoad >= 0
+            ? Math.round(rawEndLoad)
+            : 0;
+        const workloadCurve =
+          fd.get('workloadCurve') === 'linear' ? 'linear' : 'exponential';
+        const notes = String(fd.get('notes') || '').trim();
+
+        let updatedPlacement = null;
+        state.clinicalPlacements = state.clinicalPlacements.map(function (p) {
+          if (p.id !== state.editingPlacementId) return p;
+          updatedPlacement = {
+            id: p.id,
+            name: name || p.name,
+            startDate: startDate || p.startDate,
+            endDate: endDate || p.endDate,
+            startLoadDays: startLoadDays,
+            endLoadDays: endLoadDays,
+            workloadCurve: workloadCurve,
+            notes: notes || undefined,
+          };
+          return updatedPlacement;
+        });
+
+        state.editingPlacementId = null;
+        syncSinglePlacementToServer(updatedPlacement);
         renderApp();
       } else if (form.id === 'form-edit-term') {
         const fd = new FormData(form);
@@ -2141,25 +2476,94 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         const startDate = String(fd.get('startDate') || '').trim();
         const endDate = String(fd.get('endDate') || '').trim();
 
+        let updatedTerm = null;
         state.terms = state.terms.map(function (t) {
           if (t.id !== state.editingTermId) return t;
-          return {
+          updatedTerm = {
             id: t.id,
             name: name || t.name,
             startDate: startDate || t.startDate,
             endDate: endDate || t.endDate,
           };
+          return updatedTerm;
         });
 
         state.editingTermId = null;
-        savePersistedState();
+        syncSingleTermToServer(updatedTerm);
         renderApp();
       }
     });
 
-    // Pointer-event vertical drag-and-drop & prep resizing + Macro Heatmap Scrubbing
+    // Pointer-event vertical drag-and-drop, prep/post/placement workload resizing, column width resizing & Macro Heatmap Scrubbing
     root.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) return;
+
+      // 0. Check if dragging a column width resize handle
+      const colResizeHandle = e.target.closest('[data-col-resize]');
+      if (colResizeHandle) {
+        const colKey = colResizeHandle.getAttribute('data-col-resize');
+        const headerCell =
+          document.querySelector('[data-col-header="' + colKey + '"]') ||
+          colResizeHandle.closest('.domain-header-cell, .timeline-column');
+        if (colKey && headerCell) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          // Snapshot all 4 columns' current rendered pixel widths so resizing one column
+          // moves its right border 1:1 with the cursor without causing other columns to shift/grow.
+          ['academic', 'clinical', 'research', 'terms'].forEach(function (k) {
+            if (typeof state.columnWidths[k] !== 'number') {
+              const el = document.querySelector('[data-col-header="' + k + '"]');
+              if (el) {
+                state.columnWidths[k] = Math.max(
+                  120,
+                  Math.round(el.getBoundingClientRect().width)
+                );
+              }
+            }
+          });
+
+          const startClientX = e.clientX;
+          const initialWidth =
+            state.columnWidths[colKey] ||
+            Math.round(headerCell.getBoundingClientRect().width);
+          state.colResizeOp = { colKey: colKey };
+          colResizeHandle.classList.add('is-resizing');
+
+          function onColResizeMove(moveEvent) {
+            const deltaX = moveEvent.clientX - startClientX;
+            const nextWidth = Math.max(
+              120,
+              Math.min(1200, Math.round(initialWidth + deltaX))
+            );
+            state.columnWidths[colKey] = nextWidth;
+            const gridCss = buildGridTemplateColumnsCss();
+            const minWidthEl = document.querySelector('.timeline-minwidth');
+            const headerGrid = document.querySelector('.sticky-column-headers');
+            const bodyGrid = document.querySelector('.timeline-body-grid');
+            if (minWidthEl) {
+              minWidthEl.style.cssText = buildTimelineMinWidthCss();
+            }
+            if (headerGrid) headerGrid.style.gridTemplateColumns = gridCss;
+            if (bodyGrid) bodyGrid.style.gridTemplateColumns = gridCss;
+          }
+
+          function onColResizeUp() {
+            state.colResizeOp = null;
+            colResizeHandle.classList.remove('is-resizing');
+            window.removeEventListener('pointermove', onColResizeMove);
+            window.removeEventListener('pointerup', onColResizeUp);
+            window.removeEventListener('pointercancel', onColResizeUp);
+            saveLocalCacheState();
+            renderApp();
+          }
+
+          window.addEventListener('pointermove', onColResizeMove);
+          window.addEventListener('pointerup', onColResizeUp);
+          window.addEventListener('pointercancel', onColResizeUp);
+          return;
+        }
+      }
 
       // 1. Check if clicking or dragging inside the Right-Hand 3-Year Macro Heatmap Canvas
       const macroCanvas = e.target.closest('#macro-heatmap-canvas');
@@ -2181,13 +2585,51 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
         return;
       }
 
-      // Ignore clicks on edit/delete buttons inside deadline cards
+      // Ignore clicks on edit/delete buttons inside cards
       if (e.target.closest('[data-action]')) return;
 
-      const resizeHandle = e.target.closest('[data-drag-role="resize-prep"]');
+      // 2. Check if dragging a Clinical Placement Start or End Workload handle
+      const plStartHandle = e.target.closest(
+        '[data-drag-role="resize-placement-start"]'
+      );
+      const plEndHandle = e.target.closest(
+        '[data-drag-role="resize-placement-end"]'
+      );
+      if (plStartHandle || plEndHandle) {
+        const plHandleEl = plStartHandle || plEndHandle;
+        const placementId = plHandleEl.getAttribute('data-placement-id');
+        const plItem = state.clinicalPlacements.find(function (p) {
+          return p.id === placementId;
+        });
+        if (!plItem) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        state.dragOp = {
+          placementId: plItem.id,
+          mode: plStartHandle
+            ? 'resize-placement-start'
+            : 'resize-placement-end',
+          startClientY: e.clientY,
+          initialStartLoadDays:
+            plItem.startLoadDays !== undefined
+              ? Number(plItem.startLoadDays)
+              : 14,
+          initialEndLoadDays:
+            plItem.endLoadDays !== undefined ? Number(plItem.endLoadDays) : 14,
+        };
+
+        renderApp();
+        return;
+      }
+
+      // 3. Check if dragging a Deadline card or Prep/Post workload handle
+      const resizePrepHandle = e.target.closest('[data-drag-role="resize-prep"]');
+      const resizePostHandle = e.target.closest('[data-drag-role="resize-post"]');
       const shiftHandle = e.target.closest('[data-drag-role="shift-due"]');
 
-      const handleEl = resizeHandle || shiftHandle;
+      const handleEl = resizePrepHandle || resizePostHandle || shiftHandle;
       if (!handleEl) return;
 
       const deadlineId = handleEl.getAttribute('data-deadline-id');
@@ -2201,13 +2643,19 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
 
       state.dragOp = {
         deadlineId: item.id,
-        mode: resizeHandle ? 'resize-prep' : 'shift-due',
+        mode: resizePrepHandle
+          ? 'resize-prep'
+          : resizePostHandle
+          ? 'resize-post'
+          : 'shift-due',
         startClientY: e.clientY,
         initialDueDay: DateMath.dateToDayOffset(
           item.dueDate,
           state.programmeStartYear
         ),
-        initialPrepDays: item.prepDurationDays,
+        initialPrepDays:
+          item.prepDurationDays !== undefined ? Number(item.prepDurationDays) : 14,
+        initialPostDays: Number(item.postDurationDays) || 0,
       };
 
       renderApp();
@@ -2222,6 +2670,43 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
       const snappedDeltaDays = Math.round(rawDeltaDays / snap) * snap;
 
       let changed = false;
+
+      if (op.placementId) {
+        state.clinicalPlacements = state.clinicalPlacements.map(function (p) {
+          if (p.id !== op.placementId) return p;
+
+          if (op.mode === 'resize-placement-start') {
+            const nextStartLoad = Math.max(
+              0,
+              Math.min(365, op.initialStartLoadDays + snappedDeltaDays)
+            );
+            const curStartLoad =
+              p.startLoadDays !== undefined ? Number(p.startLoadDays) : 14;
+            if (nextStartLoad !== curStartLoad) {
+              changed = true;
+              return Object.assign({}, p, { startLoadDays: nextStartLoad });
+            }
+            return p;
+          } else {
+            const nextEndLoad = Math.max(
+              0,
+              Math.min(365, op.initialEndLoadDays - snappedDeltaDays)
+            );
+            const curEndLoad =
+              p.endLoadDays !== undefined ? Number(p.endLoadDays) : 14;
+            if (nextEndLoad !== curEndLoad) {
+              changed = true;
+              return Object.assign({}, p, { endLoadDays: nextEndLoad });
+            }
+            return p;
+          }
+        });
+
+        if (changed) {
+          renderApp();
+        }
+        return;
+      }
 
       state.deadlines = state.deadlines.map(function (d) {
         if (d.id !== op.deadlineId) return d;
@@ -2240,14 +2725,24 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
             return Object.assign({}, d, { dueDate: nextIso });
           }
           return d;
-        } else {
+        } else if (op.mode === 'resize-prep') {
           const nextPrep = Math.max(
-            1,
+            0,
             Math.min(365, op.initialPrepDays - snappedDeltaDays)
           );
           if (nextPrep !== d.prepDurationDays) {
             changed = true;
             return Object.assign({}, d, { prepDurationDays: nextPrep });
+          }
+          return d;
+        } else {
+          const nextPost = Math.max(
+            0,
+            Math.min(365, op.initialPostDays + snappedDeltaDays)
+          );
+          if (nextPost !== (Number(d.postDurationDays) || 0)) {
+            changed = true;
+            return Object.assign({}, d, { postDurationDays: nextPost });
           }
           return d;
         }
@@ -2260,14 +2755,29 @@ term,"Year 1 - Term 1",,,,YYYY-MM-DD,YYYY-MM-DD,</pre>
 
     window.addEventListener('pointerup', function () {
       if (!state.dragOp) return;
+      if (state.dragOp.placementId) {
+        const draggedPlId = state.dragOp.placementId;
+        state.dragOp = null;
+        const updatedPlacement = state.clinicalPlacements.find(function (p) {
+          return p.id === draggedPlId;
+        });
+        syncSinglePlacementToServer(updatedPlacement);
+        renderApp();
+        return;
+      }
+
+      const draggedId = state.dragOp.deadlineId;
       state.dragOp = null;
-      savePersistedState();
+      const updatedItem = state.deadlines.find(function (d) {
+        return d.id === draggedId;
+      });
+      syncSingleDeadlineToServer(updatedItem);
       renderApp();
     });
   }
 
   function init() {
-    loadPersistedState();
+    initPersistenceAndLanSync();
     renderApp();
     attachEventListeners();
   }
