@@ -209,6 +209,9 @@
     if (typeof serverPayload.connectedClients === 'number') {
       state.connectedClients = Math.max(1, serverPayload.connectedClients);
     }
+    if (typeof serverPayload.storageMode === 'string') {
+      state.storageMode = serverPayload.storageMode;
+    }
     saveLocalCacheState();
   }
 
@@ -739,23 +742,37 @@
                 class="btn"
                 data-action="commit-save-state"
                 style="${
-                  state.serverConnected
-                    ? 'background:#F0FDFA;color:#0F766E;border-color:#99F6E4;'
-                    : 'background:#F8FAFC;color:#475569;border-color:#CBD5E1;'
+                  !state.serverConnected
+                    ? 'background:#F8FAFC;color:#475569;border-color:#CBD5E1;'
+                    : state.storageMode === 'vercel-ephemeral'
+                    ? 'background:#FEF3C7;color:#92400E;border-color:#FCD34D;'
+                    : 'background:#F0FDFA;color:#0F766E;border-color:#99F6E4;'
                 }"
                 title="${
-                  state.serverConnected
-                    ? `Connected to shared LAN SQLite Database (Rev #${state.serverRevision}, ${state.connectedClients} active LAN browser${state.connectedClients === 1 ? '' : 's'}). Click to force sync.`
-                    : 'Offline / Local Browser Storage mode. Start server.cjs to share across LAN.'
+                  !state.serverConnected
+                    ? 'Offline / Local Browser Storage mode.'
+                    : state.storageMode === 'vercel-ephemeral'
+                    ? 'Vercel Serverless Function is running WITHOUT GITHUB_TOKEN. Add GITHUB_TOKEN in Vercel Project Settings -> Environment Variables and Redeploy to persist across instances.'
+                    : state.storageMode === 'github-cloud'
+                    ? `Connected to shared GitHub Cloud Database (Rev #${state.serverRevision}). Click to force sync.`
+                    : `Connected to shared LAN SQLite Database (Rev #${state.serverRevision}, ${state.connectedClients} active LAN browser${state.connectedClients === 1 ? '' : 's'}). Click to force sync.`
                 }"
               >
                 <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${
-                  state.serverConnected ? '#0F766E' : '#94A3B8'
+                  !state.serverConnected
+                    ? '#94A3B8'
+                    : state.storageMode === 'vercel-ephemeral'
+                    ? '#D97706'
+                    : '#0F766E'
                 };"></span>
                 ${
-                  state.serverConnected
-                    ? `LAN SQLite${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''} (${state.connectedClients} online)`
-                    : `Local Cache${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''}`
+                  !state.serverConnected
+                    ? `Local Cache${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''}`
+                    : state.storageMode === 'vercel-ephemeral'
+                    ? `Ephemeral (Set GITHUB_TOKEN) · Rev #${state.serverRevision}`
+                    : state.storageMode === 'github-cloud'
+                    ? `Cloud Sync${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''} (Rev #${state.serverRevision})`
+                    : `LAN SQLite${state.lastSavedAt ? ' · ' + state.lastSavedAt : ''} (${state.connectedClients} online)`
                 }
               </button>
 

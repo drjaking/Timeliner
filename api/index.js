@@ -12,14 +12,6 @@
  *   - PUT    /api/settings
  *   - POST   /api/reset
  *   - GET    /api/events
- *
- * Cloud Persistence Strategy (100% Free):
- *   1. Reads and writes `data/state.json` on the dedicated `timeliner-state` branch
- *      in `drjaking/Timeliner` via the GitHub API when `GITHUB_TOKEN` is set in
- *      Vercel Environment Variables. Writing to `timeliner-state` avoids triggering
- *      Vercel production rebuilds on `main`.
- *   2. Caches active state in `/tmp/timeliner-vercel-state.json` and automatically
- *      retries on HTTP 409 SHA conflicts across concurrent serverless instances.
  */
 
 const fs = require('node:fs');
@@ -37,6 +29,7 @@ const GITHUB_FILE_PATH = 'data/state.json';
 
 let memoryState = null;
 let githubFileSha = null;
+let lastLoadedCommitSha = null;
 
 function getIsoTimeStr() {
   return new Date().toTimeString().slice(0, 8);
@@ -108,24 +101,50 @@ function saveTmpState(stateObj) {
   } catch (_e) {}
 }
 
+/**
+ * Resolves the exact HEAD commit SHA of `timeliner-state` first, then fetches
+ * `data/state.json?ref=<commitSha>`. Because commit SHAs are immutable, GitHub's
+ * CDN never serves stale branch-cached content across serverless containers.
+ */
 async function fetchStateFromGitHub() {
   if (!GITHUB_TOKEN) return null;
 
+  const headers = {
+    Authorization: `Bearer ${GITHUB_TOKEN}`,
+    Accept: 'application/vnd.github+json',
+    'Cache-Control': 'no-cache, no-store, max-age=0',
+    'User-Agent': 'Timeliner-Vercel-Serverless',
+  };
+
   try {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(GITHUB_BRANCH)}&_t=${Date.now()}`;
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github+json',
-        'Cache-Control': 'no-cache, no-store, max-age=0',
-        'If-None-Match': `"${Date.now()}-${Math.random()}"`,
-        'User-Agent': 'Timeliner-Vercel-Serverless',
-      },
-    });
+    // 1. Get exact branch HEAD commit SHA
+    const refUrl = `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${encodeURIComponent(GITHUB_BRANCH)}?_t=${Date.now()}`;
+    const refRes = await fetch(refUrl, { headers });
+    let targetRef = GITHUB_BRANCH;
+
+    if (refRes.ok) {
+      const refData = await refRes.json();
+      const commitSha = refData && refData.object && refData.object.sha;
+      if (commitSha) {
+        if (memoryState && lastLoadedCommitSha === commitSha) {
+          memoryState.storageMode = getStorageMode();
+          return memoryState;
+        }
+        targetRef = commitSha;
+      }
+    }
+
+    // 2. Fetch file at exact commit SHA (bypasses branch CDN cache)
+    const contentUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(targetRef)}`;
+    const res = await fetch(contentUrl, { headers });
     if (!res.ok) return null;
+
     const payload = await res.json();
     if (payload && payload.content) {
       githubFileSha = payload.sha || githubFileSha;
+      if (targetRef !== GITHUB_BRANCH) {
+        lastLoadedCommitSha = targetRef;
+      }
       const decoded = Buffer.from(payload.content, 'base64').toString('utf8');
       const parsed = JSON.parse(decoded);
       parsed.storageMode = getStorageMode();
@@ -152,14 +171,20 @@ async function persistStateToGitHub(stateObj, commitLabel) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       if (!githubFileSha || attempt > 0) {
-        const getRes = await fetch(
-          `${apiUrl}?ref=${encodeURIComponent(GITHUB_BRANCH)}&_t=${Date.now()}`,
-          {
-            headers: {
-              ...headers,
-              'If-None-Match': `"${Date.now()}-${Math.random()}"`,
-            },
+        const refRes = await fetch(
+          `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${encodeURIComponent(GITHUB_BRANCH)}?_t=${Date.now()}`,
+          { headers }
+        );
+        let refParam = GITHUB_BRANCH;
+        if (refRes.ok) {
+          const refData = await refRes.json();
+          if (refData && refData.object && refData.object.sha) {
+            refParam = refData.object.sha;
           }
+        }
+        const getRes = await fetch(
+          `${apiUrl}?ref=${encodeURIComponent(refParam)}`,
+          { headers }
         );
         if (getRes.ok) {
           const existing = await getRes.json();
@@ -191,6 +216,9 @@ async function persistStateToGitHub(stateObj, commitLabel) {
         const result = await putRes.json();
         if (result && result.content && result.content.sha) {
           githubFileSha = result.content.sha;
+        }
+        if (result && result.commit && result.commit.sha) {
+          lastLoadedCommitSha = result.commit.sha;
         }
         return;
       }
@@ -279,7 +307,12 @@ module.exports = async function handler(req, res) {
   }
 
   const parsedUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
-  const pathname = parsedUrl.pathname;
+  const rewrittenSubpath = parsedUrl.searchParams.get('__path');
+  const pathname =
+    rewrittenSubpath &&
+    (parsedUrl.pathname === '/api/index' || parsedUrl.pathname === '/api/index.js')
+      ? '/api/' + rewrittenSubpath.replace(/^\/+/, '')
+      : parsedUrl.pathname;
 
   // 1. SSE Endpoint (/api/events)
   if (req.method === 'GET' && pathname === '/api/events') {

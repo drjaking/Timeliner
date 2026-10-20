@@ -1,12 +1,8 @@
 {
-  "version": 2,
-  "framework": null,
-  "buildCommand": "",
-  "outputDirectory": ".",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.cjs"
+      "destination": "/api/index?__path=$1"
     }
   ]
 }
