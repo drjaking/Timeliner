@@ -1,13 +1,10 @@
 {
-  "functions": {
-    "api/*.js": {
-      "includeFiles": "{data/**,src/**}"
-    }
-  },
+  "framework": null,
+  "outputDirectory": ".",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index?__path=$1"
+      "destination": "/api/index.js?__path=$1"
     }
   ]
 }

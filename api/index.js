@@ -1,33 +1,374 @@
 /**
- * Vercel Serverless API Handler for Timeliner (/api/*)
- *
- * Implements the REST & SSE contract:
- *   - GET    /api/state
- *   - PUT    /api/state
- *   - POST   /api/deadlines
- *   - DELETE /api/deadlines/:id
- *   - POST   /api/terms
- *   - DELETE /api/terms/:id
- *   - POST   /api/placements
- *   - PUT    /api/settings
- *   - POST   /api/reset
- *   - GET    /api/events
+ * Standalone Vercel Serverless API Handler for Timeliner (/api/*)
+ * Zero external dependencies. Guaranteed never to throw MODULE_NOT_FOUND.
  */
 
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const SeedData = require('../src/seedData.js');
 
-let BUNDLED_STATE = null;
-try {
-  BUNDLED_STATE = require('../data/state.json');
-} catch (_e) {
-  try {
-    const raw = fs.readFileSync(path.join(__dirname, '..', 'data', 'state.json'), 'utf8');
-    BUNDLED_STATE = JSON.parse(raw);
-  } catch (_e2) {}
-}
+const SEED_STATE = {
+  "programmeStartYear": 2026,
+  "revision": 7,
+  "lastSavedAt": "14:17:23",
+  "connectedClients": 0,
+  "deadlines": [
+    {
+      "id": "acad-y1-cr1-2027-01-29",
+      "title": "Clinical Report 1",
+      "domain": "academic",
+      "dueDate": "2027-01-29",
+      "prepDurationDays": 28,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "2026 Intake (Y1) — Submission Deadline: Friday 29 January 2027"
+    },
+    {
+      "id": "acad-y1-cr2-2027-04-16",
+      "title": "Clinical Report 2",
+      "domain": "academic",
+      "dueDate": "2027-04-16",
+      "prepDurationDays": 28,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "2026 Intake (Y1) — Submission Deadline: 10am, Friday 16 April 2027"
+    },
+    {
+      "id": "acad-y1-exam1-2027-05-17",
+      "title": "Exam Paper 1",
+      "domain": "academic",
+      "dueDate": "2027-05-17",
+      "prepDurationDays": 21,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "2026 Intake (Y1) — Examination: Monday 17 May 2027"
+    },
+    {
+      "id": "acad-y1-exam2-2027-05-18",
+      "title": "Exam Paper 2",
+      "domain": "academic",
+      "dueDate": "2027-05-18",
+      "prepDurationDays": 21,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "2026 Intake (Y1) — Examination: Tuesday 18 May 2027"
+    },
+    {
+      "id": "acad-y2-cr3-2027-11-12",
+      "title": "Clinical Report 3",
+      "domain": "academic",
+      "dueDate": "2027-11-12",
+      "prepDurationDays": 28,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Year 2 (+52w from 2025 Intake: Fri 13 Nov 2026 -> Fri 12 Nov 2027)"
+    },
+    {
+      "id": "acad-y2-exam3-2028-05-17",
+      "title": "Exam Paper 3",
+      "domain": "academic",
+      "dueDate": "2028-05-17",
+      "prepDurationDays": 21,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Year 2 (+52w from 2025 Intake: Wed 19 May 2027 -> Wed 17 May 2028)"
+    },
+    {
+      "id": "acad-y3-cr4-2028-10-06",
+      "title": "Clinical Report 4",
+      "domain": "academic",
+      "dueDate": "2028-10-06",
+      "prepDurationDays": 28,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Year 3 (+104w from 2024 Intake: Fri 09 Oct 2026 -> Fri 06 Oct 2028)"
+    },
+    {
+      "id": "res-y1-soi-2027-05-06",
+      "title": "Statement of Intent",
+      "domain": "research",
+      "dueDate": "2027-01-31",
+      "prepDurationDays": 19,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Intake 2026"
+    },
+    {
+      "id": "res-y1-proposal-2027-07-09",
+      "title": "Research Proposal",
+      "domain": "research",
+      "dueDate": "2027-04-16",
+      "prepDurationDays": 59,
+      "postDurationDays": 0,
+      "workloadCurve": "linear"
+    },
+    {
+      "id": "res-y2-litsearch-2028-09-08",
+      "title": "Literature Review Searches",
+      "domain": "research",
+      "dueDate": "2027-08-31",
+      "prepDurationDays": 28,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Year 2/3 transition (+52w from Intake 2025: Fri 10 Sep 2027 -> Fri 8 Sep 2028)"
+    },
+    {
+      "id": "res-y3-litreview-2028-11-17",
+      "title": "Literature Review",
+      "domain": "research",
+      "dueDate": "2028-03-19",
+      "prepDurationDays": 139,
+      "postDurationDays": 0,
+      "workloadCurve": "linear",
+      "notes": "Year 3 (+104w from Intake 2024: Fri 20 Nov 2026 -> Fri 17 Nov 2028)"
+    },
+    {
+      "id": "res-y3-titleabstract-2029-03-02",
+      "title": "Title and Abstract",
+      "domain": "research",
+      "dueDate": "2028-12-08",
+      "prepDurationDays": 7,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential",
+      "notes": "Year 3 (+104w from Intake 2024: Fri 5 Mar 2027 -> Fri 2 Mar 2029)"
+    },
+    {
+      "id": "res-y3-thesisvol1-2029-06-08",
+      "title": "Thesis Submission",
+      "domain": "research",
+      "dueDate": "2029-04-30",
+      "prepDurationDays": 105,
+      "postDurationDays": 0,
+      "workloadCurve": "linear"
+    },
+    {
+      "id": "res-y3-vivas-2029-08-31",
+      "title": "Vivas",
+      "domain": "research",
+      "dueDate": "2029-07-01",
+      "prepDurationDays": 7,
+      "postDurationDays": 0,
+      "workloadCurve": "exponential"
+    },
+    {
+      "id": "105dbacc-2320-4ad9-a27a-cb8330715bed",
+      "title": "Project Booklet",
+      "domain": "research",
+      "dueDate": "2026-12-11",
+      "prepDurationDays": 0,
+      "postDurationDays": 11,
+      "workloadCurve": "exponential"
+    }
+  ],
+  "terms": [
+    {
+      "id": "ucl-y1-t1",
+      "name": "Y1 Term 1 (Autumn)",
+      "startDate": "2026-09-28",
+      "endDate": "2026-12-11"
+    },
+    {
+      "id": "ucl-y1-t1-rw",
+      "name": "Y1 Term 1 Reading Week",
+      "startDate": "2026-11-02",
+      "endDate": "2026-11-06"
+    },
+    {
+      "id": "ucl-y1-xmas",
+      "name": "Y1 Winter Closure / Vacation",
+      "startDate": "2026-12-12",
+      "endDate": "2027-01-10"
+    },
+    {
+      "id": "ucl-y1-t2",
+      "name": "Y1 Term 2 (Spring)",
+      "startDate": "2027-01-11",
+      "endDate": "2027-03-24"
+    },
+    {
+      "id": "ucl-y1-t2-rw",
+      "name": "Y1 Term 2 Reading Week",
+      "startDate": "2027-02-15",
+      "endDate": "2027-02-19"
+    },
+    {
+      "id": "ucl-y1-easter",
+      "name": "Y1 Spring Vacation (Easter)",
+      "startDate": "2027-03-25",
+      "endDate": "2027-04-25"
+    },
+    {
+      "id": "ucl-y1-t3",
+      "name": "Y1 Term 3 (Summer)",
+      "startDate": "2027-04-26",
+      "endDate": "2027-06-11"
+    },
+    {
+      "id": "ucl-y1-summer",
+      "name": "Y1 Summer Vacation / Research Period",
+      "startDate": "2027-06-12",
+      "endDate": "2027-09-26"
+    },
+    {
+      "id": "ucl-y2-t1",
+      "name": "Y2 Term 1 (Autumn)",
+      "startDate": "2027-09-27",
+      "endDate": "2027-12-10"
+    },
+    {
+      "id": "ucl-y2-t1-rw",
+      "name": "Y2 Term 1 Reading Week",
+      "startDate": "2027-11-01",
+      "endDate": "2027-11-05"
+    },
+    {
+      "id": "ucl-y2-xmas",
+      "name": "Y2 Winter Closure / Vacation",
+      "startDate": "2027-12-11",
+      "endDate": "2028-01-09"
+    },
+    {
+      "id": "ucl-y2-t2",
+      "name": "Y2 Term 2 (Spring)",
+      "startDate": "2028-01-10",
+      "endDate": "2028-03-24"
+    },
+    {
+      "id": "ucl-y2-t2-rw",
+      "name": "Y2 Term 2 Reading Week",
+      "startDate": "2028-02-14",
+      "endDate": "2028-02-18"
+    },
+    {
+      "id": "ucl-y2-easter",
+      "name": "Y2 Spring Vacation (Easter)",
+      "startDate": "2028-03-25",
+      "endDate": "2028-04-23"
+    },
+    {
+      "id": "ucl-y2-t3",
+      "name": "Y2 Term 3 (Summer)",
+      "startDate": "2028-04-24",
+      "endDate": "2028-06-09"
+    },
+    {
+      "id": "ucl-y2-summer",
+      "name": "Y2 Summer Vacation / Research Period",
+      "startDate": "2028-06-10",
+      "endDate": "2028-09-24"
+    },
+    {
+      "id": "ucl-y3-t1",
+      "name": "Y3 Term 1 (Autumn)",
+      "startDate": "2028-09-25",
+      "endDate": "2028-12-08"
+    },
+    {
+      "id": "ucl-y3-t1-rw",
+      "name": "Y3 Term 1 Reading Week",
+      "startDate": "2028-10-30",
+      "endDate": "2028-11-03"
+    },
+    {
+      "id": "ucl-y3-xmas",
+      "name": "Y3 Winter Closure / Vacation",
+      "startDate": "2028-12-09",
+      "endDate": "2029-01-07"
+    },
+    {
+      "id": "ucl-y3-t2",
+      "name": "Y3 Term 2 (Spring)",
+      "startDate": "2029-01-08",
+      "endDate": "2029-03-23"
+    },
+    {
+      "id": "ucl-y3-t2-rw",
+      "name": "Y3 Term 2 Reading Week",
+      "startDate": "2029-02-12",
+      "endDate": "2029-02-16"
+    },
+    {
+      "id": "ucl-y3-easter",
+      "name": "Y3 Spring Vacation (Easter)",
+      "startDate": "2029-03-24",
+      "endDate": "2029-04-22"
+    },
+    {
+      "id": "ucl-y3-t3",
+      "name": "Y3 Term 3 (Summer)",
+      "startDate": "2029-04-23",
+      "endDate": "2029-06-08"
+    },
+    {
+      "id": "ucl-y3-summer",
+      "name": "Y3 Summer / Viva Voce Window",
+      "startDate": "2029-06-09",
+      "endDate": "2029-08-31"
+    }
+  ],
+  "clinicalPlacements": [
+    {
+      "id": "clin-pl-y1-p1",
+      "name": "Placement 1 (Y1)",
+      "startDate": "2026-10-28",
+      "endDate": "2027-04-09",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential",
+      "notes": "2026 Intake — Wed 28 Oct 2026 to Fri 09 Apr 2027 (Immovable)"
+    },
+    {
+      "id": "clin-pl-y1-p2",
+      "name": "Placement 2 (Y1)",
+      "startDate": "2027-04-12",
+      "endDate": "2027-10-01",
+      "startLoadDays": 19,
+      "endLoadDays": 14,
+      "workloadCurve": "linear",
+      "notes": "2026 Intake — Mon 12 Apr 2027 to Fri 01 Oct 2027 (Immovable)"
+    },
+    {
+      "id": "clin-pl-y2-p3",
+      "name": "Placement 3 (Y2)",
+      "startDate": "2027-10-04",
+      "endDate": "2028-03-31",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential",
+      "notes": "Year 2 (+52w from 2025 Intake: Mon 05 Oct 2026 - Fri 02 Apr 2027) (Immovable)"
+    },
+    {
+      "id": "clin-pl-y2-p4",
+      "name": "Placement 4 (Y2)",
+      "startDate": "2028-04-03",
+      "endDate": "2028-09-29",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential",
+      "notes": "Year 2 (+52w from 2025 Intake: Mon 05 Apr 2027 - Fri 01 Oct 2027) (Immovable)"
+    },
+    {
+      "id": "clin-pl-y3-p5",
+      "name": "Placement 5 (Y3)",
+      "startDate": "2028-10-02",
+      "endDate": "2029-03-23",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential",
+      "notes": "Year 3 (+104w from 2024 Intake: Mon 05 Oct 2026 - Fri 26 Mar 2027) (Immovable)"
+    },
+    {
+      "id": "clin-pl-y3-p6",
+      "name": "Placement 6 (Y3)",
+      "startDate": "2029-03-26",
+      "endDate": "2029-09-17",
+      "startLoadDays": 14,
+      "endLoadDays": 14,
+      "workloadCurve": "exponential",
+      "notes": "Year 3 (+104w from 2024 Intake: Mon 29 Mar 2027 - Mon 20 Sep 2027) (Immovable)"
+    }
+  ]
+};
 
 const TMP_STATE_PATH = path.join(os.tmpdir(), 'timeliner-vercel-state.json');
 
@@ -50,42 +391,9 @@ function getStorageMode() {
 }
 
 function buildDefaultSeedState() {
-  if (BUNDLED_STATE && Array.isArray(BUNDLED_STATE.deadlines)) {
-    const clone = JSON.parse(JSON.stringify(BUNDLED_STATE));
-    clone.storageMode = getStorageMode();
-    return clone;
-  }
-  return {
-    programmeStartYear: 2026,
-    revision: 1,
-    lastSavedAt: getIsoTimeStr(),
-    storageMode: getStorageMode(),
-    deadlines: (SeedData.INITIAL_DEADLINES || []).map(function (d) {
-      return {
-        id: d.id,
-        title: d.title,
-        domain: d.domain,
-        dueDate: d.dueDate,
-        prepDurationDays: Number(d.prepDurationDays ?? 14),
-        postDurationDays: Number(d.postDurationDays ?? 0),
-        workloadCurve: d.workloadCurve === 'linear' ? 'linear' : 'exponential',
-        notes: d.notes || undefined,
-      };
-    }),
-    terms: (SeedData.INITIAL_UCL_TERMS || []).slice(),
-    clinicalPlacements: (SeedData.INITIAL_CLINICAL_PLACEMENTS || []).map(function (p) {
-      return {
-        id: p.id,
-        name: p.name,
-        startDate: p.startDate,
-        endDate: p.endDate,
-        startLoadDays: Number(p.startLoadDays ?? 14),
-        endLoadDays: Number(p.endLoadDays ?? 14),
-        workloadCurve: p.workloadCurve === 'linear' ? 'linear' : 'exponential',
-        notes: p.notes || '',
-      };
-    }),
-  };
+  const clone = JSON.parse(JSON.stringify(SEED_STATE));
+  clone.storageMode = getStorageMode();
+  return clone;
 }
 
 function loadLocalBundledOrTmpState() {
@@ -111,11 +419,6 @@ function saveTmpState(stateObj) {
   } catch (_e) {}
 }
 
-/**
- * Fetches state from GitHub with strict cache-busting.
- * Guarantees monotonic revision progression: if remote has an older revision than
- * what this serverless instance already holds, the local higher revision is retained.
- */
 async function fetchStateFromGitHub() {
   if (!GITHUB_TOKEN) {
     lastSyncDiagnostic = { status: 'no-token', message: 'GITHUB_TOKEN environment variable not set' };
@@ -130,7 +433,6 @@ async function fetchStateFromGitHub() {
   };
 
   try {
-    // 1. Get exact branch HEAD commit SHA
     const refUrl = `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${encodeURIComponent(GITHUB_BRANCH)}?_t=${Date.now()}`;
     const refRes = await fetch(refUrl, { headers, signal: AbortSignal.timeout(4000) });
     let targetRef = GITHUB_BRANCH;
@@ -151,7 +453,6 @@ async function fetchStateFromGitHub() {
       lastSyncDiagnostic = { status: 'ref-error', code: refRes.status, message: errText };
     }
 
-    // 2. Fetch file content at exact commit SHA (bypasses branch Fastly CDN cache)
     const contentUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(targetRef)}`;
     const res = await fetch(contentUrl, { headers, signal: AbortSignal.timeout(4000) });
     if (!res.ok) {
@@ -171,7 +472,6 @@ async function fetchStateFromGitHub() {
       const parsed = JSON.parse(decoded);
       parsed.storageMode = getStorageMode();
 
-      // Guard: Never downgrade an already-higher local in-memory revision due to replica lag
       if (memoryState && typeof memoryState.revision === 'number' && typeof parsed.revision === 'number') {
         if (parsed.revision < memoryState.revision) {
           return memoryState;
@@ -207,7 +507,7 @@ async function persistStateToGitHub(stateObj, commitLabel) {
       if (!githubFileSha || attempt > 0) {
         const refRes = await fetch(
           `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${encodeURIComponent(GITHUB_BRANCH)}?_t=${Date.now()}`,
-          { headers }
+          { headers, signal: AbortSignal.timeout(4000) }
         );
         let refParam = GITHUB_BRANCH;
         if (refRes.ok) {
@@ -218,7 +518,7 @@ async function persistStateToGitHub(stateObj, commitLabel) {
         }
         const getRes = await fetch(
           `${apiUrl}?ref=${encodeURIComponent(refParam)}`,
-          { headers }
+          { headers, signal: AbortSignal.timeout(4000) }
         );
         if (getRes.ok) {
           const existing = await getRes.json();
@@ -244,6 +544,7 @@ async function persistStateToGitHub(stateObj, commitLabel) {
         method: 'PUT',
         headers,
         body: JSON.stringify(putBody),
+        signal: AbortSignal.timeout(4000),
       });
 
       if (putRes.ok) {
@@ -353,7 +654,6 @@ module.exports = async function handler(req, res) {
   const parsedUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const rewrittenSubpath = parsedUrl.searchParams.get('__path');
 
-  // Robust path resolution handling both direct hits and rewrite redirects
   let pathname = parsedUrl.pathname;
   if (rewrittenSubpath && rewrittenSubpath !== 'index' && rewrittenSubpath !== 'index.js') {
     pathname = '/api/' + rewrittenSubpath.replace(/^\/+/, '');
@@ -362,7 +662,6 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // 1. SSE Endpoint (/api/events)
     if (req.method === 'GET' && pathname === '/api/events') {
       const stateObj = await getCurrentState();
       res.writeHead(200, {
@@ -383,14 +682,12 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 2. GET /api/state
     if (req.method === 'GET' && pathname === '/api/state') {
       const stateObj = await getCurrentState();
       sendJson(res, 200, stateObj);
       return;
     }
 
-    // 3. PUT /api/state
     if (req.method === 'PUT' && pathname === '/api/state') {
       const body = await readJsonBody(req);
       const stateObj = await getCurrentState();
@@ -443,7 +740,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 4. POST /api/deadlines
     if (req.method === 'POST' && pathname === '/api/deadlines') {
       const d = await readJsonBody(req);
       if (!d || !d.id) {
@@ -475,7 +771,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 5. DELETE /api/deadlines/:id
     if (req.method === 'DELETE' && pathname.startsWith('/api/deadlines/')) {
       const id = decodeURIComponent(pathname.slice('/api/deadlines/'.length));
       const stateObj = await getCurrentState();
@@ -488,7 +783,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 6. POST /api/terms
     if (req.method === 'POST' && pathname === '/api/terms') {
       const t = await readJsonBody(req);
       if (!t || !t.id) {
@@ -516,7 +810,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 7. DELETE /api/terms/:id
     if (req.method === 'DELETE' && pathname.startsWith('/api/terms/')) {
       const id = decodeURIComponent(pathname.slice('/api/terms/'.length));
       const stateObj = await getCurrentState();
@@ -529,7 +822,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 8. POST /api/placements
     if (req.method === 'POST' && pathname === '/api/placements') {
       const p = await readJsonBody(req);
       if (!p || !p.id) {
@@ -561,7 +853,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 9. PUT /api/settings
     if (req.method === 'PUT' && pathname === '/api/settings') {
       const body = await readJsonBody(req);
       const stateObj = await getCurrentState();
@@ -574,7 +865,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // 10. POST /api/reset
     if (req.method === 'POST' && pathname === '/api/reset') {
       const resetState = buildDefaultSeedState();
       bumpStateMetadata(resetState);
