@@ -132,7 +132,7 @@ async function fetchStateFromGitHub() {
   try {
     // 1. Get exact branch HEAD commit SHA
     const refUrl = `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${encodeURIComponent(GITHUB_BRANCH)}?_t=${Date.now()}`;
-    const refRes = await fetch(refUrl, { headers });
+    const refRes = await fetch(refUrl, { headers, signal: AbortSignal.timeout(4000) });
     let targetRef = GITHUB_BRANCH;
 
     if (refRes.ok) {
@@ -153,7 +153,7 @@ async function fetchStateFromGitHub() {
 
     // 2. Fetch file content at exact commit SHA (bypasses branch Fastly CDN cache)
     const contentUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(targetRef)}`;
-    const res = await fetch(contentUrl, { headers });
+    const res = await fetch(contentUrl, { headers, signal: AbortSignal.timeout(4000) });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       console.error(`[GitHub Contents Error] ${res.status}: ${errText}`);
