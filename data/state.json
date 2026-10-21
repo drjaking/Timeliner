@@ -1,7 +1,7 @@
 {
   "programmeStartYear": 2026,
-  "revision": 11,
-  "lastSavedAt": "16:43:01",
+  "revision": 12,
+  "lastSavedAt": "16:43:08",
   "connectedClients": 0,
   "deadlines": [
     {
@@ -147,7 +147,7 @@
       "domain": "research",
       "dueDate": "2026-12-11",
       "prepDurationDays": 0,
-      "postDurationDays": 11,
+      "postDurationDays": 15,
       "workloadCurve": "exponential"
     }
   ],
@@ -361,8 +361,7 @@
   ],
   "storageMode": "github-cloud",
   "syncDiagnostic": {
-    "status": "synced",
-    "commitSha": "81e394ceb099e859f6a413a215135b3ad0698b98",
-    "revision": 10
+    "status": "persisted",
+    "revision": 11
   }
 }
