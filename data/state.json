@@ -1,7 +1,7 @@
 {
   "programmeStartYear": 2026,
-  "revision": 8,
-  "lastSavedAt": "17:39:14",
+  "revision": 9,
+  "lastSavedAt": "16:40:44",
   "connectedClients": 0,
   "deadlines": [
     {
@@ -147,7 +147,7 @@
       "domain": "research",
       "dueDate": "2026-12-11",
       "prepDurationDays": 0,
-      "postDurationDays": 11,
+      "postDurationDays": 12,
       "workloadCurve": "exponential"
     }
   ],
@@ -359,5 +359,10 @@
       "notes": "Year 3 (+104w from 2024 Intake: Mon 29 Mar 2027 - Mon 20 Sep 2027) (Immovable)"
     }
   ],
-  "storageMode": "github-cloud"
+  "storageMode": "github-cloud",
+  "syncDiagnostic": {
+    "status": "synced",
+    "commitSha": "221ac6fd1ca65a03e053d3e8a58ce97312da3057",
+    "revision": 8
+  }
 }
