@@ -1,7 +1,7 @@
 {
   "programmeStartYear": 2026,
-  "revision": 10,
-  "lastSavedAt": "16:40:53",
+  "revision": 11,
+  "lastSavedAt": "16:43:01",
   "connectedClients": 0,
   "deadlines": [
     {
@@ -361,7 +361,8 @@
   ],
   "storageMode": "github-cloud",
   "syncDiagnostic": {
-    "status": "persisted",
-    "revision": 9
+    "status": "synced",
+    "commitSha": "81e394ceb099e859f6a413a215135b3ad0698b98",
+    "revision": 10
   }
 }
