@@ -1,7 +1,7 @@
 /**
  * Vercel Serverless API Handler for Timeliner (/api/*)
  *
- * Implements the exact same REST & SSE contract as server.cjs:
+ * Implements the REST & SSE contract:
  *   - GET    /api/state
  *   - PUT    /api/state
  *   - POST   /api/deadlines
@@ -19,10 +19,19 @@ const path = require('node:path');
 const os = require('node:os');
 const SeedData = require('../src/seedData.js');
 
-const BUNDLED_STATE_PATH = path.join(__dirname, '..', 'data', 'state.json');
+let BUNDLED_STATE = null;
+try {
+  BUNDLED_STATE = require('../data/state.json');
+} catch (_e) {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, '..', 'data', 'state.json'), 'utf8');
+    BUNDLED_STATE = JSON.parse(raw);
+  } catch (_e2) {}
+}
+
 const TMP_STATE_PATH = path.join(os.tmpdir(), 'timeliner-vercel-state.json');
 
-const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
+const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim().replace(/^["']|["']$/g, '').replace(/^Bearer\s+/i, '').trim();
 const GITHUB_REPO = (process.env.GITHUB_REPO || 'drjaking/Timeliner').trim();
 const GITHUB_BRANCH = (process.env.GITHUB_BRANCH || 'timeliner-state').trim();
 const GITHUB_FILE_PATH = 'data/state.json';
@@ -30,6 +39,7 @@ const GITHUB_FILE_PATH = 'data/state.json';
 let memoryState = null;
 let githubFileSha = null;
 let lastLoadedCommitSha = null;
+let lastSyncDiagnostic = null;
 
 function getIsoTimeStr() {
   return new Date().toTimeString().slice(0, 8);
@@ -40,6 +50,11 @@ function getStorageMode() {
 }
 
 function buildDefaultSeedState() {
+  if (BUNDLED_STATE && Array.isArray(BUNDLED_STATE.deadlines)) {
+    const clone = JSON.parse(JSON.stringify(BUNDLED_STATE));
+    clone.storageMode = getStorageMode();
+    return clone;
+  }
   return {
     programmeStartYear: 2026,
     revision: 1,
@@ -82,19 +97,14 @@ function loadLocalBundledOrTmpState() {
     }
   } catch (_e) {}
 
-  try {
-    if (fs.existsSync(BUNDLED_STATE_PATH)) {
-      const parsed = JSON.parse(fs.readFileSync(BUNDLED_STATE_PATH, 'utf8'));
-      parsed.storageMode = getStorageMode();
-      return parsed;
-    }
-  } catch (_e) {}
-
   return buildDefaultSeedState();
 }
 
 function saveTmpState(stateObj) {
   stateObj.storageMode = getStorageMode();
+  if (lastSyncDiagnostic) {
+    stateObj.syncDiagnostic = lastSyncDiagnostic;
+  }
   memoryState = stateObj;
   try {
     fs.writeFileSync(TMP_STATE_PATH, JSON.stringify(stateObj, null, 2), 'utf8');
@@ -102,12 +112,15 @@ function saveTmpState(stateObj) {
 }
 
 /**
- * Resolves the exact HEAD commit SHA of `timeliner-state` first, then fetches
- * `data/state.json?ref=<commitSha>`. Because commit SHAs are immutable, GitHub's
- * CDN never serves stale branch-cached content across serverless containers.
+ * Fetches state from GitHub with strict cache-busting.
+ * Guarantees monotonic revision progression: if remote has an older revision than
+ * what this serverless instance already holds, the local higher revision is retained.
  */
 async function fetchStateFromGitHub() {
-  if (!GITHUB_TOKEN) return null;
+  if (!GITHUB_TOKEN) {
+    lastSyncDiagnostic = { status: 'no-token', message: 'GITHUB_TOKEN environment variable not set' };
+    return null;
+  }
 
   const headers = {
     Authorization: `Bearer ${GITHUB_TOKEN}`,
@@ -132,12 +145,21 @@ async function fetchStateFromGitHub() {
         }
         targetRef = commitSha;
       }
+    } else {
+      const errText = await refRes.text().catch(() => '');
+      console.error(`[GitHub Ref Error] ${refRes.status}: ${errText}`);
+      lastSyncDiagnostic = { status: 'ref-error', code: refRes.status, message: errText };
     }
 
-    // 2. Fetch file at exact commit SHA (bypasses branch CDN cache)
+    // 2. Fetch file content at exact commit SHA (bypasses branch Fastly CDN cache)
     const contentUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}?ref=${encodeURIComponent(targetRef)}`;
     const res = await fetch(contentUrl, { headers });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error(`[GitHub Contents Error] ${res.status}: ${errText}`);
+      lastSyncDiagnostic = { status: 'contents-error', code: res.status, message: errText };
+      return null;
+    }
 
     const payload = await res.json();
     if (payload && payload.content) {
@@ -148,10 +170,22 @@ async function fetchStateFromGitHub() {
       const decoded = Buffer.from(payload.content, 'base64').toString('utf8');
       const parsed = JSON.parse(decoded);
       parsed.storageMode = getStorageMode();
+
+      // Guard: Never downgrade an already-higher local in-memory revision due to replica lag
+      if (memoryState && typeof memoryState.revision === 'number' && typeof parsed.revision === 'number') {
+        if (parsed.revision < memoryState.revision) {
+          return memoryState;
+        }
+      }
+
+      lastSyncDiagnostic = { status: 'synced', commitSha: targetRef, revision: parsed.revision };
       saveTmpState(parsed);
       return parsed;
     }
-  } catch (_e) {}
+  } catch (err) {
+    console.error('[fetchStateFromGitHub Exception]', err);
+    lastSyncDiagnostic = { status: 'exception', message: err.message };
+  }
   return null;
 }
 
@@ -220,15 +254,22 @@ async function persistStateToGitHub(stateObj, commitLabel) {
         if (result && result.commit && result.commit.sha) {
           lastLoadedCommitSha = result.commit.sha;
         }
+        lastSyncDiagnostic = { status: 'persisted', revision: stateObj.revision };
         return;
       }
+
+      const errText = await putRes.text().catch(() => '');
+      console.error(`[persistStateToGitHub Attempt ${attempt + 1}] Status ${putRes.status}: ${errText}`);
+      lastSyncDiagnostic = { status: 'persist-error', code: putRes.status, message: errText };
 
       if (putRes.status === 409 || putRes.status === 422) {
         githubFileSha = null;
         continue;
       }
       return;
-    } catch (_e) {
+    } catch (err) {
+      console.error('[persistStateToGitHub Exception]', err);
+      lastSyncDiagnostic = { status: 'persist-exception', message: err.message };
       githubFileSha = null;
     }
   }
@@ -241,6 +282,9 @@ async function getCurrentState() {
     memoryState = loadLocalBundledOrTmpState();
   }
   memoryState.storageMode = getStorageMode();
+  if (lastSyncDiagnostic) {
+    memoryState.syncDiagnostic = lastSyncDiagnostic;
+  }
   return memoryState;
 }
 
@@ -308,233 +352,240 @@ module.exports = async function handler(req, res) {
 
   const parsedUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const rewrittenSubpath = parsedUrl.searchParams.get('__path');
-  const pathname =
-    rewrittenSubpath &&
-    (parsedUrl.pathname === '/api/index' || parsedUrl.pathname === '/api/index.js')
-      ? '/api/' + rewrittenSubpath.replace(/^\/+/, '')
-      : parsedUrl.pathname;
 
-  // 1. SSE Endpoint (/api/events)
-  if (req.method === 'GET' && pathname === '/api/events') {
-    const stateObj = await getCurrentState();
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'close',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.write(
-      `retry: 3000\ndata: ${JSON.stringify({
-        type: 'connected',
-        connectedClients: 1,
-        revision: stateObj.revision,
-        lastSavedAt: stateObj.lastSavedAt,
-        storageMode: stateObj.storageMode,
-      })}\n\n`
-    );
-    res.end();
-    return;
+  // Robust path resolution handling both direct hits and rewrite redirects
+  let pathname = parsedUrl.pathname;
+  if (rewrittenSubpath && rewrittenSubpath !== 'index' && rewrittenSubpath !== 'index.js') {
+    pathname = '/api/' + rewrittenSubpath.replace(/^\/+/, '');
+  } else if (!pathname.startsWith('/api/')) {
+    pathname = '/api/' + pathname.replace(/^\/+/, '');
   }
 
-  // 2. GET /api/state
-  if (req.method === 'GET' && pathname === '/api/state') {
-    const stateObj = await getCurrentState();
-    sendJson(res, 200, stateObj);
-    return;
-  }
-
-  // 3. PUT /api/state
-  if (req.method === 'PUT' && pathname === '/api/state') {
-    const body = await readJsonBody(req);
-    const stateObj = await getCurrentState();
-
-    if (typeof body.programmeStartYear === 'number') {
-      stateObj.programmeStartYear = Math.round(body.programmeStartYear);
-    }
-    if (Array.isArray(body.deadlines)) {
-      stateObj.deadlines = body.deadlines.map(function (d) {
-        return {
-          id: String(d.id),
-          title: String(d.title || 'Untitled'),
-          domain: String(d.domain || 'academic'),
-          dueDate: String(d.dueDate || '2026-09-01'),
-          prepDurationDays: Math.max(0, Math.round(Number(d.prepDurationDays ?? 14))),
-          postDurationDays: Math.max(0, Math.round(Number(d.postDurationDays ?? 0))),
-          workloadCurve: d.workloadCurve === 'linear' ? 'linear' : 'exponential',
-          notes: d.notes ? String(d.notes) : undefined,
-        };
+  try {
+    // 1. SSE Endpoint (/api/events)
+    if (req.method === 'GET' && pathname === '/api/events') {
+      const stateObj = await getCurrentState();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Access-Control-Allow-Origin': '*',
       });
-    }
-    if (Array.isArray(body.terms)) {
-      stateObj.terms = body.terms.map(function (t) {
-        return {
-          id: String(t.id),
-          name: String(t.name || 'Term'),
-          startDate: String(t.startDate),
-          endDate: String(t.endDate),
-        };
-      });
-    }
-    if (Array.isArray(body.clinicalPlacements)) {
-      stateObj.clinicalPlacements = body.clinicalPlacements.map(function (p) {
-        return {
-          id: String(p.id),
-          name: String(p.name || 'Placement'),
-          startDate: String(p.startDate),
-          endDate: String(p.endDate),
-          startLoadDays: Math.max(0, Math.round(Number(p.startLoadDays ?? 14))),
-          endLoadDays: Math.max(0, Math.round(Number(p.endLoadDays ?? 14))),
-          workloadCurve: p.workloadCurve === 'linear' ? 'linear' : 'exponential',
-          notes: p.notes ? String(p.notes) : '',
-        };
-      });
-    }
-
-    bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, 'full-state-sync');
-    sendJson(res, 200, stateObj);
-    return;
-  }
-
-  // 4. POST /api/deadlines
-  if (req.method === 'POST' && pathname === '/api/deadlines') {
-    const d = await readJsonBody(req);
-    if (!d || !d.id) {
-      sendJson(res, 400, { error: 'Invalid deadline payload' });
+      res.write(
+        `retry: 3000\ndata: ${JSON.stringify({
+          type: 'connected',
+          connectedClients: 1,
+          revision: stateObj.revision,
+          lastSavedAt: stateObj.lastSavedAt,
+          storageMode: stateObj.storageMode,
+        })}\n\n`
+      );
+      res.end();
       return;
     }
-    const stateObj = await getCurrentState();
-    const record = {
-      id: String(d.id),
-      title: String(d.title || 'Untitled'),
-      domain: String(d.domain || 'academic'),
-      dueDate: String(d.dueDate || '2026-09-01'),
-      prepDurationDays: Math.max(0, Math.round(Number(d.prepDurationDays ?? 14))),
-      postDurationDays: Math.max(0, Math.round(Number(d.postDurationDays ?? 0))),
-      workloadCurve: d.workloadCurve === 'linear' ? 'linear' : 'exponential',
-      notes: d.notes ? String(d.notes) : undefined,
-    };
-    const idx = stateObj.deadlines.findIndex(function (item) {
-      return item.id === record.id;
-    });
-    if (idx >= 0) {
-      stateObj.deadlines[idx] = record;
-    } else {
-      stateObj.deadlines.push(record);
-    }
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, `upsert-deadline ${record.title}`);
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
 
-  // 5. DELETE /api/deadlines/:id
-  if (req.method === 'DELETE' && pathname.startsWith('/api/deadlines/')) {
-    const id = decodeURIComponent(pathname.slice('/api/deadlines/'.length));
-    const stateObj = await getCurrentState();
-    stateObj.deadlines = stateObj.deadlines.filter(function (d) {
-      return d.id !== id;
-    });
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, `delete-deadline ${id}`);
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
-
-  // 6. POST /api/terms
-  if (req.method === 'POST' && pathname === '/api/terms') {
-    const t = await readJsonBody(req);
-    if (!t || !t.id) {
-      sendJson(res, 400, { error: 'Invalid term payload' });
+    // 2. GET /api/state
+    if (req.method === 'GET' && pathname === '/api/state') {
+      const stateObj = await getCurrentState();
+      sendJson(res, 200, stateObj);
       return;
     }
-    const stateObj = await getCurrentState();
-    const record = {
-      id: String(t.id),
-      name: String(t.name || 'Term'),
-      startDate: String(t.startDate),
-      endDate: String(t.endDate),
-    };
-    const idx = stateObj.terms.findIndex(function (item) {
-      return item.id === record.id;
-    });
-    if (idx >= 0) {
-      stateObj.terms[idx] = record;
-    } else {
-      stateObj.terms.push(record);
-    }
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, `upsert-term ${record.name}`);
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
 
-  // 7. DELETE /api/terms/:id
-  if (req.method === 'DELETE' && pathname.startsWith('/api/terms/')) {
-    const id = decodeURIComponent(pathname.slice('/api/terms/'.length));
-    const stateObj = await getCurrentState();
-    stateObj.terms = stateObj.terms.filter(function (t) {
-      return t.id !== id;
-    });
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, `delete-term ${id}`);
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
+    // 3. PUT /api/state
+    if (req.method === 'PUT' && pathname === '/api/state') {
+      const body = await readJsonBody(req);
+      const stateObj = await getCurrentState();
 
-  // 8. POST /api/placements
-  if (req.method === 'POST' && pathname === '/api/placements') {
-    const p = await readJsonBody(req);
-    if (!p || !p.id) {
-      sendJson(res, 400, { error: 'Invalid placement payload' });
+      if (typeof body.programmeStartYear === 'number') {
+        stateObj.programmeStartYear = Math.round(body.programmeStartYear);
+      }
+      if (Array.isArray(body.deadlines)) {
+        stateObj.deadlines = body.deadlines.map(function (d) {
+          return {
+            id: String(d.id),
+            title: String(d.title || 'Untitled'),
+            domain: String(d.domain || 'academic'),
+            dueDate: String(d.dueDate || '2026-09-01'),
+            prepDurationDays: Math.max(0, Math.round(Number(d.prepDurationDays ?? 14))),
+            postDurationDays: Math.max(0, Math.round(Number(d.postDurationDays ?? 0))),
+            workloadCurve: d.workloadCurve === 'linear' ? 'linear' : 'exponential',
+            notes: d.notes ? String(d.notes) : undefined,
+          };
+        });
+      }
+      if (Array.isArray(body.terms)) {
+        stateObj.terms = body.terms.map(function (t) {
+          return {
+            id: String(t.id),
+            name: String(t.name || 'Term'),
+            startDate: String(t.startDate),
+            endDate: String(t.endDate),
+          };
+        });
+      }
+      if (Array.isArray(body.clinicalPlacements)) {
+        stateObj.clinicalPlacements = body.clinicalPlacements.map(function (p) {
+          return {
+            id: String(p.id),
+            name: String(p.name || 'Placement'),
+            startDate: String(p.startDate),
+            endDate: String(p.endDate),
+            startLoadDays: Math.max(0, Math.round(Number(p.startLoadDays ?? 14))),
+            endLoadDays: Math.max(0, Math.round(Number(p.endLoadDays ?? 14))),
+            workloadCurve: p.workloadCurve === 'linear' ? 'linear' : 'exponential',
+            notes: p.notes ? String(p.notes) : '',
+          };
+        });
+      }
+
+      bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, 'full-state-sync');
+      sendJson(res, 200, stateObj);
       return;
     }
-    const stateObj = await getCurrentState();
-    const record = {
-      id: String(p.id),
-      name: String(p.name || 'Placement'),
-      startDate: String(p.startDate),
-      endDate: String(p.endDate),
-      startLoadDays: Math.max(0, Math.round(Number(p.startLoadDays ?? 14))),
-      endLoadDays: Math.max(0, Math.round(Number(p.endLoadDays ?? 14))),
-      workloadCurve: p.workloadCurve === 'linear' ? 'linear' : 'exponential',
-      notes: p.notes ? String(p.notes) : '',
-    };
-    const idx = stateObj.clinicalPlacements.findIndex(function (item) {
-      return item.id === record.id;
-    });
-    if (idx >= 0) {
-      stateObj.clinicalPlacements[idx] = record;
-    } else {
-      stateObj.clinicalPlacements.push(record);
+
+    // 4. POST /api/deadlines
+    if (req.method === 'POST' && pathname === '/api/deadlines') {
+      const d = await readJsonBody(req);
+      if (!d || !d.id) {
+        sendJson(res, 400, { error: 'Invalid deadline payload' });
+        return;
+      }
+      const stateObj = await getCurrentState();
+      const record = {
+        id: String(d.id),
+        title: String(d.title || 'Untitled'),
+        domain: String(d.domain || 'academic'),
+        dueDate: String(d.dueDate || '2026-09-01'),
+        prepDurationDays: Math.max(0, Math.round(Number(d.prepDurationDays ?? 14))),
+        postDurationDays: Math.max(0, Math.round(Number(d.postDurationDays ?? 0))),
+        workloadCurve: d.workloadCurve === 'linear' ? 'linear' : 'exponential',
+        notes: d.notes ? String(d.notes) : undefined,
+      };
+      const idx = stateObj.deadlines.findIndex(function (item) {
+        return item.id === record.id;
+      });
+      if (idx >= 0) {
+        stateObj.deadlines[idx] = record;
+      } else {
+        stateObj.deadlines.push(record);
+      }
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, `upsert-deadline ${record.title}`);
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
     }
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, `upsert-placement ${record.name}`);
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
 
-  // 9. PUT /api/settings
-  if (req.method === 'PUT' && pathname === '/api/settings') {
-    const body = await readJsonBody(req);
-    const stateObj = await getCurrentState();
-    if (typeof body.programmeStartYear === 'number') {
-      stateObj.programmeStartYear = Math.round(body.programmeStartYear);
+    // 5. DELETE /api/deadlines/:id
+    if (req.method === 'DELETE' && pathname.startsWith('/api/deadlines/')) {
+      const id = decodeURIComponent(pathname.slice('/api/deadlines/'.length));
+      const stateObj = await getCurrentState();
+      stateObj.deadlines = stateObj.deadlines.filter(function (d) {
+        return d.id !== id;
+      });
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, `delete-deadline ${id}`);
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
     }
-    const meta = bumpStateMetadata(stateObj);
-    await persistStateToGitHub(stateObj, 'update-settings');
-    sendJson(res, 200, { ok: true, ...meta });
-    return;
-  }
 
-  // 10. POST /api/reset
-  if (req.method === 'POST' && pathname === '/api/reset') {
-    const resetState = buildDefaultSeedState();
-    bumpStateMetadata(resetState);
-    await persistStateToGitHub(resetState, 'reset-default');
-    sendJson(res, 200, resetState);
-    return;
-  }
+    // 6. POST /api/terms
+    if (req.method === 'POST' && pathname === '/api/terms') {
+      const t = await readJsonBody(req);
+      if (!t || !t.id) {
+        sendJson(res, 400, { error: 'Invalid term payload' });
+        return;
+      }
+      const stateObj = await getCurrentState();
+      const record = {
+        id: String(t.id),
+        name: String(t.name || 'Term'),
+        startDate: String(t.startDate),
+        endDate: String(t.endDate),
+      };
+      const idx = stateObj.terms.findIndex(function (item) {
+        return item.id === record.id;
+      });
+      if (idx >= 0) {
+        stateObj.terms[idx] = record;
+      } else {
+        stateObj.terms.push(record);
+      }
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, `upsert-term ${record.name}`);
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
+    }
 
-  sendJson(res, 404, { error: 'Unknown API endpoint: ' + pathname });
+    // 7. DELETE /api/terms/:id
+    if (req.method === 'DELETE' && pathname.startsWith('/api/terms/')) {
+      const id = decodeURIComponent(pathname.slice('/api/terms/'.length));
+      const stateObj = await getCurrentState();
+      stateObj.terms = stateObj.terms.filter(function (t) {
+        return t.id !== id;
+      });
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, `delete-term ${id}`);
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
+    }
+
+    // 8. POST /api/placements
+    if (req.method === 'POST' && pathname === '/api/placements') {
+      const p = await readJsonBody(req);
+      if (!p || !p.id) {
+        sendJson(res, 400, { error: 'Invalid placement payload' });
+        return;
+      }
+      const stateObj = await getCurrentState();
+      const record = {
+        id: String(p.id),
+        name: String(p.name || 'Placement'),
+        startDate: String(p.startDate),
+        endDate: String(p.endDate),
+        startLoadDays: Math.max(0, Math.round(Number(p.startLoadDays ?? 14))),
+        endLoadDays: Math.max(0, Math.round(Number(p.endLoadDays ?? 14))),
+        workloadCurve: p.workloadCurve === 'linear' ? 'linear' : 'exponential',
+        notes: p.notes ? String(p.notes) : '',
+      };
+      const idx = stateObj.clinicalPlacements.findIndex(function (item) {
+        return item.id === record.id;
+      });
+      if (idx >= 0) {
+        stateObj.clinicalPlacements[idx] = record;
+      } else {
+        stateObj.clinicalPlacements.push(record);
+      }
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, `upsert-placement ${record.name}`);
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
+    }
+
+    // 9. PUT /api/settings
+    if (req.method === 'PUT' && pathname === '/api/settings') {
+      const body = await readJsonBody(req);
+      const stateObj = await getCurrentState();
+      if (typeof body.programmeStartYear === 'number') {
+        stateObj.programmeStartYear = Math.round(body.programmeStartYear);
+      }
+      const meta = bumpStateMetadata(stateObj);
+      await persistStateToGitHub(stateObj, 'update-settings');
+      sendJson(res, 200, { ok: true, ...meta });
+      return;
+    }
+
+    // 10. POST /api/reset
+    if (req.method === 'POST' && pathname === '/api/reset') {
+      const resetState = buildDefaultSeedState();
+      bumpStateMetadata(resetState);
+      await persistStateToGitHub(resetState, 'reset-default');
+      sendJson(res, 200, resetState);
+      return;
+    }
+
+    sendJson(res, 404, { error: 'Unknown API endpoint: ' + pathname });
+  } catch (err) {
+    console.error(`[Unhandled API Error in ${pathname}]`, err);
+    sendJson(res, 500, { error: 'Internal Server Error', message: err.message });
+  }
 };

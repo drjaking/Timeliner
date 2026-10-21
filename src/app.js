@@ -69,6 +69,7 @@
     dragOp: null,
 
     // Persistence & LAN Server Sync tracking
+    syncDiagnostics: null,
     deletedSeedIds: [],
     lastSavedAt: null,
     serverConnected: false,
@@ -212,6 +213,9 @@
     if (typeof serverPayload.storageMode === 'string') {
       state.storageMode = serverPayload.storageMode;
     }
+    if (serverPayload.syncDiagnostic) {
+      state.syncDiagnostics = serverPayload.syncDiagnostic;
+    }
     saveLocalCacheState();
   }
 
@@ -250,6 +254,9 @@
       if (data && typeof data.storageMode === 'string') {
         state.storageMode = data.storageMode;
       }
+      if (data && data.syncDiagnostic) {
+        state.syncDiagnostics = data.syncDiagnostic;
+      }
       if (isWrite) {
         if (data && typeof data.lastSavedAt === 'string') {
           state.lastSavedAt = data.lastSavedAt;
@@ -287,8 +294,10 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected && deadlineItem) {
-      apiRequest('POST', '/api/deadlines', deadlineItem);
+    if (isUsingHttpProtocol() && deadlineItem) {
+      apiRequest('POST', '/api/deadlines', deadlineItem).then(function (res) {
+        if (res) renderApp();
+      });
     }
   }
 
@@ -296,11 +305,10 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected && deadlineId) {
-      apiRequest(
-        'DELETE',
-        '/api/deadlines/' + encodeURIComponent(deadlineId)
-      );
+    if (isUsingHttpProtocol() && deadlineId) {
+      apiRequest('DELETE', '/api/deadlines/' + encodeURIComponent(deadlineId)).then(function (res) {
+        if (res) renderApp();
+      });
     }
   }
 
@@ -308,8 +316,10 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected && termItem) {
-      apiRequest('POST', '/api/terms', termItem);
+    if (isUsingHttpProtocol() && termItem) {
+      apiRequest('POST', '/api/terms', termItem).then(function (res) {
+        if (res) renderApp();
+      });
     }
   }
 
@@ -317,8 +327,10 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected && termId) {
-      apiRequest('DELETE', '/api/terms/' + encodeURIComponent(termId));
+    if (isUsingHttpProtocol() && termId) {
+      apiRequest('DELETE', '/api/terms/' + encodeURIComponent(termId)).then(function (res) {
+        if (res) renderApp();
+      });
     }
   }
 
@@ -326,8 +338,10 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected && placementItem) {
-      apiRequest('POST', '/api/placements', placementItem);
+    if (isUsingHttpProtocol() && placementItem) {
+      apiRequest('POST', '/api/placements', placementItem).then(function (res) {
+        if (res) renderApp();
+      });
     }
   }
 
@@ -335,9 +349,11 @@
     const now = new Date();
     state.lastSavedAt = now.toTimeString().slice(0, 8);
     saveLocalCacheState();
-    if (state.serverConnected) {
+    if (isUsingHttpProtocol()) {
       apiRequest('PUT', '/api/settings', {
         programmeStartYear: state.programmeStartYear,
+      }).then(function (res) {
+        if (res) renderApp();
       });
     }
   }
@@ -447,7 +463,7 @@
       } else if (wasOffline) {
         renderApp();
       }
-    }, 3000);
+    }, 2000);
   }
 
 
